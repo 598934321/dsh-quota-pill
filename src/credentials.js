@@ -161,3 +161,38 @@ export function credentialSource(provider) {
   };
   return { kind: 'api-key', dir: null, ref: refByProvider[provider] || null };
 }
+
+/**
+ * Read a `records` entry (grants and session material live here, not in refs).
+ * Returns the record's payload object, or null.
+ */
+export function readRecord(name) {
+  try {
+    const doc = parseCredentialsYaml(fs.readFileSync(CREDENTIALS_FILE, 'utf8'));
+    const rec = (doc.records || {})[name];
+    return rec && rec.payload ? rec.payload : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The DeepSeek Platform grant.
+ *
+ * Note this is NOT an api.deepseek.com API key — it is a Platform login grant,
+ * used as an `x-dsh-auth-token` header against platform.deepseek.com. Sending it
+ * to api.deepseek.com fails with 401 (verified), so the balance must be read
+ * through DSH's own account/getBalance RPC.
+ */
+export function deepseekGrant() {
+  const p = readRecord('deepseek-account-platform/default');
+  if (!p || typeof p.token !== 'string' || !p.token) return null;
+  return { token: p.token, issuer: p.issuer || 'https://platform.deepseek.com' };
+}
+
+/** The browser-session secret, used to sign DSH RPC cookies. */
+export function browserSessionSecret() {
+  const p = readRecord('client-connection/browser-session');
+  if (!p || typeof p.secret !== 'string' || !p.secret) return null;
+  return p.secret;
+}

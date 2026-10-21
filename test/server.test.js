@@ -69,8 +69,9 @@ test('malformed input degrades to no refs instead of throwing', () => {
 test('adapter results always carry kind and provider', async () => {
   const { kimi, opencode, commandcode } = await import('../src/adapters-apikey.js');
   const { xai, codex, agy } = await import('../src/adapters-cliproxy.js');
+  const { deepseek } = await import('../src/adapters-deepseek.js');
 
-  for (const [name, fn] of Object.entries({ kimi, opencode, commandcode, xai, codex, agy })) {
+  for (const [name, fn] of Object.entries({ deepseek, kimi, opencode, commandcode, xai, codex, agy })) {
     const r = await fn(null);
     assert.ok(r && typeof r === 'object', `${name} returned nothing`);
     assert.equal(typeof r.kind, 'string', `${name}.kind missing`);
@@ -113,4 +114,22 @@ test('CLIProxy providers explain the dependency when it is absent', async () => 
   if (r.kind === 'none' || r.kind === 'probe-failed') {
     assert.match(String(r.error), /CLIProxy|codex|credential/i);
   }
+});
+
+test('deepseek reports the Platform grant, not an api.deepseek.com key', async () => {
+  const { deepseek } = await import('../src/adapters-deepseek.js');
+  const r = await deepseek();
+  // With DSH_HOME pointed at a nonexistent dir there is no grant at all.
+  if (r.kind === 'none') {
+    assert.match(String(r.error), /DeepSeek|grant|sign/i,
+      'must explain that the Platform sign-in is missing');
+    assert.ok(r.setup, 'must carry setup hints for the agent flow');
+  }
+});
+
+test('deepseek is never reported as a percentage', async () => {
+  const { deepseek } = await import('../src/adapters-deepseek.js');
+  const r = await deepseek();
+  // A prepaid wallet has no ceiling, so a percentage would be fabricated.
+  assert.equal(r.remainingPct ?? null, null);
 });

@@ -22,16 +22,20 @@
 import http from 'node:http';
 import { kimi, opencode, commandcode } from './adapters-apikey.js';
 import { xai, codex, agy } from './adapters-cliproxy.js';
+import { deepseek } from './adapters-deepseek.js';
 import { credentialSource, hasCliProxy, CLI_PROXY_DIR, CREDENTIALS_FILE } from './credentials.js';
 
 const PORT = Number(process.env.QUOTA_PILL_PORT || 8319);
 const HOST = process.env.QUOTA_PILL_HOST || '127.0.0.1';
 const CACHE_TTL_MS = Number(process.env.QUOTA_PILL_CACHE_TTL || 60) * 1000;
 
-const ADAPTERS = { kimi, opencode, commandcode, xai, codex, agy };
+// Order matters: the pill lists providers in this order, and the official
+// DeepSeek account is the one most people look for first.
+const ADAPTERS = { deepseek, kimi, opencode, commandcode, xai, codex, agy };
 
 /** Display names. Deliberately small: the table stays in sync with ADAPTERS. */
 const DISPLAY_NAMES = {
+  deepseek: 'DeepSeek',
   kimi: 'Kimi Coding',
   opencode: 'OpenCode Go',
   commandcode: 'Command Code',
@@ -52,6 +56,7 @@ const PREFIX_ALIASES = {
   codex: 'codex',
   antigravity: 'agy',
   agy: 'agy',
+  deepseek: 'deepseek',
 };
 
 /** provider|model → { at, payload }. Keyed by model because readings differ per model. */

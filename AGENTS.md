@@ -30,8 +30,14 @@ There are **two credential families**, and this matters for every step:
 
 | Family | Providers | What the user needs |
 |---|---|---|
+| DSH Platform sign-in | `deepseek` | **nothing** — works if they are signed in to DeepSeek Platform in DSH |
 | API key | `kimi`, `opencode`, `commandcode` | a key pasted into `~/.dsh/.credentials.yaml` |
 | OAuth via CLIProxyAPI | `xai`, `codex`, `agy` | **CLIProxyAPI installed and logged in once** |
+
+**Check DeepSeek first.** It is the official account and needs no setup beyond a
+DSH Platform sign-in, so it is usually the one the user actually wants. If it
+reports `none` with "not signed in to DeepSeek Platform", tell them to use the
+DSH account menu, then re-run step 5.
 
 ---
 
@@ -81,6 +87,7 @@ Do **not** guess. Ask, in one message, listing the options with what each needs:
 
 > I can read quota for six providers. Which do you have?
 >
+> - **DeepSeek** — works already if you are signed in to DeepSeek Platform in DSH
 > - **Kimi Coding** — needs a `KIMI_CODING_API_KEY`
 > - **OpenCode Go** — needs an `OPENCODE_GO_API_KEY`
 > - **Command Code** — needs a `COMMANDCODE_API_KEY`
@@ -170,7 +177,7 @@ For each provider look at `kind`:
 | `subscription-quota` | working — `remainingPct` and `windows` are populated |
 | `none` | not configured — the `error` field says exactly what to add |
 | `probe-failed` | configured but the upstream call failed — see `error` |
-| `payg` | metered billing with no ceiling; no percentage exists |
+| `payg` | prepaid/metered — no ceiling, so no percentage. If `credits.remain` is set, that is the balance to report |
 
 Cross-check one provider against its official dashboard if the human is unsure.
 **The plugin reports remaining quota, not used.**

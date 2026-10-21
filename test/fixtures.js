@@ -89,6 +89,20 @@ export const FIXTURES = {
     displayName: 'Kimi Coding',
     error: 'no KIMI_CODING_API_KEY in ~/.dsh/.credentials.yaml',
   },
+
+  // Prepaid wallet: has an amount, never a percentage.
+  deepseek: {
+    kind: 'payg',
+    provider: 'deepseek',
+    displayName: 'DeepSeek',
+    account: 'CNY',
+    label: 'prepaid',
+    note: 'prepaid balance 97.05 CNY',
+    remainingPct: null,
+    credits: { remain: 97.05, total: null, unit: 'CNY' },
+    windows: [{ key: 'balance', remainPct: null, amount: 97.05, unit: 'CNY', resetAt: null }],
+    bonus: { amount: 16.58, unit: 'CNY' },
+  },
 };
 
 /** A provider that reports metered spend with no ceiling (xAI unified billing). */
@@ -111,4 +125,22 @@ export const FAILED_FIXTURE = {
   displayName: 'Codex (ChatGPT Plus)',
   error: 'http 403: challenge',
   windows: [],
+};
+
+/**
+ * Official DeepSeek account: a prepaid CNY wallet, not a percentage.
+ * Read through DSH's account/getBalance, which needs the Platform grant.
+ */
+export const DEEPSEEK_FIXTURE = {
+  kind: 'payg',
+  provider: 'deepseek',
+  displayName: 'DeepSeek',
+  account: 'CNY',
+  label: 'prepaid',
+  note: 'prepaid balance 97.05 CNY (+16.58 bonus)',
+  remainingPct: null,
+  usedPct: null,
+  credits: { remain: 97.05, total: null, unit: 'CNY' },
+  windows: [{ key: 'balance', remainPct: null, amount: 97.05, unit: 'CNY', resetAt: null }],
+  bonus: { amount: 16.58, unit: 'CNY' },
 };

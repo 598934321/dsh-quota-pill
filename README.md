@@ -15,12 +15,16 @@ into the live number.
 
 | Provider | Credential |
 |---|---|
+| **DeepSeek** (official) | the Platform sign-in DSH already holds — nothing to add |
 | **Kimi Coding** | `refs.KIMI_CODING_API_KEY` in `~/.dsh/.credentials.yaml` |
 | **OpenCode Go** | `refs.OPENCODE_GO_API_KEY` |
 | **Command Code** | `refs.COMMANDCODE_API_KEY` |
 | **xAI (Grok)** | OAuth token from [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) |
 | **Codex (ChatGPT Plus)** | same — and CLIProxyAPI must be **running** |
 | **Antigravity** | same |
+
+**DeepSeek works with no setup at all** if you are signed in to DeepSeek Platform
+in DSH — that is the official account, and it is the one most users care about.
 
 The three API-key providers need nothing but the key. The three OAuth providers
 need CLIProxyAPI installed and logged in, because that is what holds the tokens;
@@ -185,6 +189,14 @@ would flicker between models you do not even have configured.
 **Command Code** does not expose a monthly ceiling. The adapter derives it from
 `monthlyCap = weekly.cap × 2`, an identity verified against two different plans
 (31.6 + 38.4 = 70 with `weekly.cap` 35; 0.225 + 9.775 = 10 with `weekly.cap` 6).
+
+**DeepSeek** is a prepaid CNY wallet, so there is no percentage to show — the pill
+shows the balance and, separately, any bonus credit. Two traps worth recording:
+the stored credential is a *Platform login grant*, not an `api.deepseek.com` API
+key (sending it there returns 401), and calling `platform.deepseek.com` directly
+returns 429 from Cloudflare. The balance is therefore read through DSH's own
+`account/getBalance` RPC, which already holds the grant and projects the response
+down to wallet currency and balance. We never handle the Platform token ourselves.
 
 ## Privacy
 

@@ -221,6 +221,8 @@ window.__ModuleLoader__.load({
       spendUnit: (req, tok) => [`${req} 次 · ${tok}`, `${req} reqs · ${tok}`],
       poolStatus: ['状态未知', 'Status unknown'],
       noSource: ['无数据源', 'No source'],
+      balanceLeft: ['余额剩余', 'Balance left'],
+      bonusBalance: ['赠金余额', 'Bonus balance'],
       offlineTitle: ['额度服务未启动', 'Quota service is not running'],
       offlineHint: ['在本机运行下面的命令即可（保持后台）', 'Start it locally in the background:'],
       creditsAll: ['全部积分', 'All credits'],
@@ -408,7 +410,15 @@ window.__ModuleLoader__.load({
       }
       // v.label 来自 adapter，本身就是双语无关的短词，优先用它。
       if (kind === 'free-usable') return { text: v.label || pick(lang, 'free'), tone: 'ok', pct: null };
-      if (kind === 'payg') return { text: v.label || pick(lang, 'payg'), tone: 'muted', pct: null };
+      if (kind === 'payg') {
+        // Prepaid wallets (e.g. the official DeepSeek account) have a real
+        // balance to show. Only fall back to the label when there is no amount.
+        const c = v.credits;
+        if (c && typeof c.remain === 'number') {
+          return { text: money(c.remain, c.unit), tone: 'ok', pct: null };
+        }
+        return { text: v.label || pick(lang, 'payg'), tone: 'muted', pct: null };
+      }
       // `none` = 这个 provider 当前取不到任何读数（渠道被删、插件被卸、没凭据）。
       // 之前没有这个分支，会掉到最后的 String(kind)，界面上直接显示字面量 "none"。
       if (kind === 'none') {
@@ -979,13 +989,23 @@ window.__ModuleLoader__.load({
     }
 
     function paygBody(data, lang) {
+      const c = data && data.credits;
+      const hasBalance = c && typeof c.remain === 'number';
       return h(React.Fragment, null,
         h('div', { className: 'quota-pill-header' },
-          h('span', { className: 'quota-pill-headline' }, (data && data.label) ? String(data.label) : pick(lang, 'payg')),
-          h('span', { className: 'quota-pill-figures' }, (data && data.note) ? String(data.note) : pick(lang, 'noCeiling')),
+          h('span', { className: 'quota-pill-headline' },
+            hasBalance ? pick(lang, 'balanceLeft') : ((data && data.label) ? String(data.label) : pick(lang, 'payg'))),
+          hasBalance
+            ? h('span', { className: 'quota-pill-figures' }, money(c.remain, c.unit))
+            : h('span', { className: 'quota-pill-figures' }, (data && data.note) ? String(data.note) : pick(lang, 'noCeiling')),
         ),
         h('dl', { className: 'quota-pill-rows' },
-          data.account && statRow(pick(lang, 'account'), String(data.account)),
+          // A prepaid wallet's bonus is worth showing separately: it is spendable
+          // but not the same money, and mixing it into the balance would overstate.
+          data.bonus && typeof data.bonus.amount === 'number'
+            ? statRow(pick(lang, 'bonusBalance'), money(data.bonus.amount, data.bonus.unit))
+            : null,
+          !hasBalance && data.account && statRow(pick(lang, 'account'), String(data.account)),
           data.usedAmount != null && statRow(pick(lang, 'usedThisPeriod'), String(data.usedAmount) + pick(lang, 'usedRaw')),
           data.monthlyLimit != null && statRow(pick(lang, 'monthlyCap'), String(data.monthlyLimit)),
           data.resetAt && statRow(pick(lang, 'nextReset'), String(data.resetAt).slice(0, 10)),
@@ -1092,6 +1112,17 @@ window.__ModuleLoader__.load({
     }
 
     /** 到期时间：积分包给的是「哪天到期」，用绝对日期比「X 天后重置」贴切。 */
+    /**
+     * Currency amount. Uses a symbol for the few currencies we may see and a
+     * bare code otherwise, so we never imply a currency we did not get.
+     */
+    function money(amount, unit) {
+      if (typeof amount !== 'number' || !Number.isFinite(amount)) return '';
+      const sym = { CNY: '\u00a5', USD: '$', EUR: '\u20ac' }[String(unit || '').toUpperCase()];
+      const n = Math.abs(amount) >= 100 ? amount.toFixed(1) : amount.toFixed(2);
+      return sym ? sym + n : n + (unit ? ' ' + unit : '');
+    }
+
     function fmtExpiry(iso, lang) {
       if (!iso) return '';
       const d = new Date(iso);

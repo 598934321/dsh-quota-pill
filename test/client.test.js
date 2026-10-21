@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FIXTURES } from './fixtures.js';
+import { FIXTURES, DEEPSEEK_FIXTURE } from './fixtures.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.join(HERE, '..', 'client.js');
@@ -45,7 +45,7 @@ function loadClient() {
   const exports = [
     'providerFor', 'providerName', 'providerEntries', 'quotaBody', 'canRenderBody',
     'describeQuota', 'pctIsInformative', 'tweenEase', 'fmtCompact', 'fmtAmount',
-    'providersFromAll', 'ALL_PROVIDERS', 'WindowRow',
+    'providersFromAll', 'ALL_PROVIDERS', 'WindowRow', 'paygBody', 'money',
   ];
   const factory = new Function(
     'React', 'document', 'navigator', 'h', 'performance',
@@ -228,4 +228,29 @@ test('providersFromAll reflects the sidecar payload verbatim', () => {
 test('providersFromAll tolerates empty/garbage payloads', () => {
   assert.equal(A.providersFromAll(null), null);
   assert.equal(A.providersFromAll({}), null);
+});
+
+/* ------------------------------------------------- prepaid wallets (DeepSeek) */
+test('a prepaid balance renders as a currency amount, not a label', () => {
+  const d = A.describeQuota(DEEPSEEK_FIXTURE, 'zh');
+  assert.equal(d.pct, null, 'a wallet has no percentage');
+  assert.match(d.text, /\u00a597/, 'must show the actual CNY balance');
+});
+
+test('prepaid balance and bonus are shown separately', () => {
+  const t = A.paygBody(DEEPSEEK_FIXTURE, 'zh');
+  const all = texts(t).join(' | ');
+  assert.match(all, /\u00a597\.05/, 'balance amount missing');
+  assert.match(all, /\u00a516\.58/, 'bonus amount missing');
+});
+
+test('money() never invents a currency symbol it was not given', () => {
+  assert.equal(A.money(12.345, 'CNY'), '\u00a512.35');
+  assert.ok(!A.money(5, 'XYZ').includes('\u00a5'));
+  assert.equal(A.money(null, 'CNY'), '');
+});
+
+test('money() picks shorter precision for large amounts', () => {
+  // 1234.56 as CNY should not be 6 significant chars longer than needed
+  assert.ok(A.money(1234.56, 'CNY').length <= 8);
 });
