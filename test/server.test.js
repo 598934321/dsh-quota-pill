@@ -70,8 +70,9 @@ test('adapter results always carry kind and provider', async () => {
   const { kimi, opencode, commandcode } = await import('../src/adapters-apikey.js');
   const { xai, codex, agy } = await import('../src/adapters-cliproxy.js');
   const { deepseek } = await import('../src/adapters-deepseek.js');
+  const { opendesign } = await import('../src/adapters-opendesign.js');
 
-  for (const [name, fn] of Object.entries({ deepseek, kimi, opencode, commandcode, xai, codex, agy })) {
+  for (const [name, fn] of Object.entries({ deepseek, kimi, opencode, commandcode, xai, codex, agy, opendesign })) {
     const r = await fn(null);
     assert.ok(r && typeof r === 'object', `${name} returned nothing`);
     assert.equal(typeof r.kind, 'string', `${name}.kind missing`);
@@ -118,6 +119,7 @@ test('CLIProxy providers explain the dependency when it is absent', async () => 
 
 test('deepseek reports the Platform grant, not an api.deepseek.com key', async () => {
   const { deepseek } = await import('../src/adapters-deepseek.js');
+  const { opendesign } = await import('../src/adapters-opendesign.js');
   const r = await deepseek();
   // With DSH_HOME pointed at a nonexistent dir there is no grant at all.
   if (r.kind === 'none') {
@@ -129,6 +131,7 @@ test('deepseek reports the Platform grant, not an api.deepseek.com key', async (
 
 test('deepseek is never reported as a percentage', async () => {
   const { deepseek } = await import('../src/adapters-deepseek.js');
+  const { opendesign } = await import('../src/adapters-opendesign.js');
   const r = await deepseek();
   // A prepaid wallet has no ceiling, so a percentage would be fabricated.
   assert.equal(r.remainingPct ?? null, null);
@@ -216,4 +219,36 @@ test('unconfigured providers are filtered out of the all page', async () => {
   assert.match(src, /kind !== 'none'/, 'readAll must drop kind none');
   // probe-failed must NOT be dropped: the provider is configured, the failure matters.
   assert.doesNotMatch(src, /kind !== 'probe-failed'/);
+});
+
+/* ------------------------------------------------------------- opendesign */
+/**
+ * Open Design is opt-in: it reads a console session cookie, not an API key.
+ * Without the cookie it must say so by name — an undefined percentage would be
+ * indistinguishable from "zero quota left".
+ */
+test('opendesign names the cookie it needs', async () => {
+  const { opendesign } = await import('../src/adapters-opendesign.js');
+  const r = await opendesign();
+  if (r.kind === 'none') {
+    assert.match(String(r.error), /OPENDESIGN_SESSION_COOKIE/);
+    assert.ok(r.setup, 'must carry setup hints');
+  }
+});
+
+test('opendesign never reports a percentage without a reading', async () => {
+  const { opendesign } = await import('../src/adapters-opendesign.js');
+  const r = await opendesign();
+  if (r.kind !== 'subscription-quota') {
+    assert.equal(r.remainingPct ?? null, null);
+  }
+});
+
+test('opendesign window labels come from window length', async () => {
+  const src = (await import('node:fs')).readFileSync(
+    new URL('../src/adapters-opendesign.js', import.meta.url), 'utf8',
+  );
+  // 18000s = 5h cap, 604800s = weekly. Hardcoded ids would drift.
+  assert.match(src, /6 \* 3600/);
+  assert.match(src, /8 \* 86400/);
 });

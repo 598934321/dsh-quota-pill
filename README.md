@@ -22,6 +22,7 @@ into the live number.
 | **xAI (Grok)** | OAuth token from [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) |
 | **Codex (ChatGPT Plus)** | same — and CLIProxyAPI must be **running** |
 | **Antigravity** | same |
+| **Open Design** (optional) | `refs.OPENDESIGN_SESSION_COOKIE` — the cloud console's session cookie |
 
 **DeepSeek works with no setup at all** if you are signed in to DeepSeek Platform
 in DSH — that is the official account, and it is the one most users care about.
@@ -191,6 +192,14 @@ would flicker between models you do not even have configured.
 **Command Code** does not expose a monthly ceiling. The adapter derives it from
 `monthlyCap = weekly.cap × 2`, an identity verified against two different plans
 (31.6 + 38.4 = 70 with `weekly.cap` 35; 0.225 + 9.775 = 10 with `weekly.cap` 6).
+
+**Open Design** keeps its allowance in the cloud console, not in the API key you
+use for inference. The `amr-link.open-design.ai/v1` gateway has no balance
+endpoint at all; the console's own `amr-api` does, and it authenticates with a
+`__Secure-better-auth.session_token` cookie. That cookie is HttpOnly, so grab it
+from devtools → Application → Cookies. The workspace id is discovered
+automatically. The request goes through system curl because Cloudflare rejects
+Node's TLS fingerprint on that host with `error code: 1010`.
 
 **DeepSeek** is a prepaid CNY wallet, so there is no percentage to show — the pill
 shows the balance and, separately, any bonus credit. Two traps worth recording:

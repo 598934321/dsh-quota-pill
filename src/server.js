@@ -25,6 +25,7 @@ import { xai, codex, agy } from './adapters-cliproxy.js';
 import { deepseek } from './adapters-deepseek.js';
 import { credentialSource, hasCliProxy, CLI_PROXY_DIR, CREDENTIALS_FILE } from './credentials.js';
 import { catalogProviderIds } from './catalog.js';
+import { opendesign } from './adapters-opendesign.js';
 
 const PORT = Number(process.env.QUOTA_PILL_PORT || 8319);
 const HOST = process.env.QUOTA_PILL_HOST || '127.0.0.1';
@@ -32,7 +33,7 @@ const CACHE_TTL_MS = Number(process.env.QUOTA_PILL_CACHE_TTL || 60) * 1000;
 
 // Order matters: the pill lists providers in this order, and the official
 // DeepSeek account is the one most people look for first.
-const ADAPTERS = { deepseek, kimi, opencode, commandcode, xai, codex, agy };
+const ADAPTERS = { deepseek, kimi, opencode, commandcode, xai, codex, agy, opendesign };
 
 /** Display names. Deliberately small: the table stays in sync with ADAPTERS. */
 const DISPLAY_NAMES = {
@@ -43,6 +44,7 @@ const DISPLAY_NAMES = {
   xai: 'xAI (Grok)',
   codex: 'Codex (ChatGPT Plus)',
   agy: 'Antigravity',
+  opendesign: 'Open Design',
 };
 
 /** Which DSH model prefixes map to which adapter. */
@@ -58,6 +60,7 @@ const PREFIX_ALIASES = {
   antigravity: 'agy',
   agy: 'agy',
   deepseek: 'deepseek',
+  opendesign: 'opendesign',
 };
 
 /** provider|model → { at, payload }. Keyed by model because readings differ per model. */
@@ -116,6 +119,7 @@ const CATALOG_ALIASES = {
   xai: ['xai'],
   codex: ['codex'],
   commandcode: ['commandcode'],
+  opendesign: ['opendesign'],
 };
 
 function inCatalog(provider, ids) {

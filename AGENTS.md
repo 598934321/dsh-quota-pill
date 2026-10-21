@@ -33,6 +33,7 @@ There are **two credential families**, and this matters for every step:
 | DSH Platform sign-in | `deepseek` | **nothing** — works if they are signed in to DeepSeek Platform in DSH |
 | API key | `kimi`, `opencode`, `commandcode` | a key pasted into `~/.dsh/.credentials.yaml` |
 | OAuth via CLIProxyAPI | `xai`, `codex`, `agy` | **CLIProxyAPI installed and logged in once** |
+| Console session cookie | `opendesign` | the `__Secure-better-auth.session_token` cookie from the Open Design cloud dashboard |
 
 **Check DeepSeek first.** It is the official account and needs no setup beyond a
 DSH Platform sign-in, so it is usually the one the user actually wants. If it
