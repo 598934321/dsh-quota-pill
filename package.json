@@ -1,0 +1,66 @@
+{
+  "name": "@598934321/dsh-quota-pill",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Quota pill for DeepSeek Harness: remaining quota for every LLM subscription you have, in one collapsible pill",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "quota",
+    "rate-limit",
+    "llm",
+    "dashboard"
+  ],
+  "license": "MIT",
+  "author": "598934321",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/598934321/dsh-quota-pill.git"
+  },
+  "homepage": "https://github.com/598934321/dsh-quota-pill#readme",
+  "bugs": {
+    "url": "https://github.com/598934321/dsh-quota-pill/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./server": "./src/server.js"
+  },
+  "bin": {
+    "dsh-quota-pill": "./bin/quota-pill-server.js"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "src/**/*.js",
+    "bin/**/*.js",
+    "docs/**/*.md",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-model-selection"
+      ]
+    }
+  },
+  "scripts": {
+    "start": "node bin/quota-pill-server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/server.js && node --check client.js"
+  }
+}
