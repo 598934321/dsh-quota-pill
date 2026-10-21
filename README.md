@@ -33,11 +33,14 @@ of showing a fake zero.
 
 ```bash
 # 1. the DSH plugin
-dsh plugin add @598934321/dsh-quota-pill
+dsh plugin add @hystudio/dsh-quota-pill
 
 # 2. the sidecar (reads credentials, talks to upstream APIs)
-npx @598934321/dsh-quota-pill
+npx @hystudio/dsh-quota-pill
 ```
+
+> The npm package is `@hystudio/...` while the repo lives at `598934321/...` —
+> they are the same author under two account names.
 
 The pill shows **"quota service is not running"** with that exact command until
 the sidecar is up. Keep it running in the background — see

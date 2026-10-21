@@ -941,7 +941,7 @@ window.__ModuleLoader__.load({
                       pick(lang, 'offlineTitle')),
                     h('div', { className: 'quota-pill-offline-hint' },
                       pick(lang, 'offlineHint')),
-                    h('code', { className: 'quota-pill-offline-cmd' }, 'npx @598934321/dsh-quota-pill'),
+                    h('code', { className: 'quota-pill-offline-cmd' }, 'npx @hystudio/dsh-quota-pill'),
                   )
                 : tab === 'all'
                 ? allBody(all, allErr, allBusy, () => loadAll(true), lang)

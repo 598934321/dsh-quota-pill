@@ -1,5 +1,5 @@
 {
-  "name": "@598934321/dsh-quota-pill",
+  "name": "@hystudio/dsh-quota-pill",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -29,7 +29,7 @@
     "./server": "./src/server.js"
   },
   "bin": {
-    "dsh-quota-pill": "./bin/quota-pill-server.js"
+    "dsh-quota-pill": "bin/quota-pill-server.js"
   },
   "files": [
     "index.js",

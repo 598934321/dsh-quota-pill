@@ -38,7 +38,7 @@ There are **two credential families**, and this matters for every step:
 ## 1. Verify the sidecar runs
 
 ```bash
-npx @598934321/dsh-quota-pill
+npx @hystudio/dsh-quota-pill
 ```
 
 Expected first lines:
