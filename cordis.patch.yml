@@ -1,3 +1,9 @@
-# Declares nothing at runtime — the pill is a pure client plugin.
-# Present because the DSH bundle loader expects a patch file next to package.json.
-[]
+# Registers this plugin's entry so the DSH loader can activate it.
+#
+# An empty list here means "nothing to insert" — the bundle is still a valid
+# package, but DSH has nothing to activate, so client.js is never loaded and the
+# pill silently never appears. Verified against a working third-party plugin:
+# its patch inserts one entry pointing at its own package name.
+- insert:
+    - id: quota-pill
+      name: '@hystudio/dsh-quota-pill'

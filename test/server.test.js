@@ -133,3 +133,33 @@ test('deepseek is never reported as a percentage', async () => {
   // A prepaid wallet has no ceiling, so a percentage would be fabricated.
   assert.equal(r.remainingPct ?? null, null);
 });
+
+/* ---------------------------------------------------- bundle manifest sanity */
+/**
+ * DSH resolves the client entry through the bundle's cordis.patch.yml. An empty
+ * list there is silently fatal: the package installs fine, the profile lists it
+ * in bundles, and client.js is simply never loaded — the UI just never appears.
+ * That is exactly how the first release shipped broken.
+ */
+test('cordis.patch.yml registers this package', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  const patch = fs.readFileSync(path.join(root, 'cordis.patch.yml'), 'utf8');
+
+  assert.match(patch, /insert:/, 'patch must insert an entry, not be empty');
+  assert.match(patch, /@hystudio\/dsh-quota-pill/, 'entry must name this package');
+});
+
+test('package.json points the bundle at that patch', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml');
+  assert.ok(fs.existsSync(path.join(root, 'cordis.patch.yml')));
+  assert.equal(pkg.dsh.client.platform, 'web');
+});
