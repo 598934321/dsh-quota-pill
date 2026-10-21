@@ -24,6 +24,7 @@ import { kimi, opencode, commandcode } from './adapters-apikey.js';
 import { xai, codex, agy } from './adapters-cliproxy.js';
 import { deepseek } from './adapters-deepseek.js';
 import { credentialSource, hasCliProxy, CLI_PROXY_DIR, CREDENTIALS_FILE } from './credentials.js';
+import { catalogProviderIds } from './catalog.js';
 
 const PORT = Number(process.env.QUOTA_PILL_PORT || 8319);
 const HOST = process.env.QUOTA_PILL_HOST || '127.0.0.1';
@@ -101,11 +102,50 @@ async function readOne(provider, model, { fresh = false } = {}) {
   return { ...payload, cached: false, at: now };
 }
 
+/**
+ * Which DSH catalog ids count as "this adapter".
+ *
+ * DSH names providers after the upstream (`antigravity`, `deepseek-account`,
+ * `opencode-go`); the adapters use the short keys the pill has always used.
+ */
+const CATALOG_ALIASES = {
+  agy: ['antigravity', 'agy'],
+  deepseek: ['deepseek-account', 'deepseek'],
+  opencode: ['opencode-go', 'opencode'],
+  kimi: ['kimi-coding', 'kimi'],
+  xai: ['xai'],
+  codex: ['codex'],
+  commandcode: ['commandcode'],
+};
+
+function inCatalog(provider, ids) {
+  if (!ids) return true; // catalog unknown: do not hide anything
+  const names = CATALOG_ALIASES[provider] || [provider];
+  return names.some((n) => ids.includes(n));
+}
+
+/**
+ * Every provider worth showing: present in DSH's catalog AND actually readable.
+ *
+ * Two filters, for two different complaints:
+ *   · catalog — a provider removed from DSH must disappear from the pill, even
+ *     though its adapter still exists in this package
+ *   · kind 'none' — a provider with no credential has nothing to show; listing
+ *     it as "no data source" is noise, and new users mistake it for breakage
+ *
+ * `probe-failed` deliberately still shows: the provider *is* configured, so a
+ * failure is information the user needs.
+ */
 async function readAll({ fresh = false } = {}) {
+  const ids = await catalogProviderIds();
+  const wanted = Object.keys(ADAPTERS).filter((p) => inCatalog(p, ids));
+
   const entries = await Promise.all(
-    Object.keys(ADAPTERS).map(async (p) => [p, await readOne(p, null, { fresh })]),
+    wanted.map(async (p) => [p, await readOne(p, null, { fresh })]),
   );
-  return Object.fromEntries(entries);
+  return Object.fromEntries(
+    entries.filter(([, v]) => v && v.kind !== 'none'),
+  );
 }
 
 /** What is configured and what is missing — powers the agent-driven setup. */

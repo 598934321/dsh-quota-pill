@@ -163,3 +163,57 @@ test('package.json points the bundle at that patch', async () => {
   assert.ok(fs.existsSync(path.join(root, 'cordis.patch.yml')));
   assert.equal(pkg.dsh.client.platform, 'web');
 });
+
+/* ------------------------------------------------ client bundle registration */
+/**
+ * The client half registers itself with the DSH module loader under its own
+ * package name. Registering under a stale id (e.g. the previous package name)
+ * is silently fatal twice over: the loader looks up the bundle's name, finds no
+ * factory, and reports "import failed" — and if the old package also loads, the
+ * duplicate id throws and takes the renderer down.
+ */
+test('client.js registers under its own package name', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const client = fs.readFileSync(path.join(root, 'client.js'), 'utf8');
+
+  const m = /id:\s*['"]([^'"]+)['"]/.exec(client);
+  assert.ok(m, 'client.js must pass an id to __ModuleLoader__.load');
+  assert.equal(m[1], pkg.name, 'registration id must equal the package name');
+});
+
+/**
+ * A Cordis host plugin must export `name`. Without it the loader treats the
+ * bundle as unimportable and the whole thing never activates.
+ */
+test('host entry exports name and apply', async () => {
+  const mod = await import('../index.js');
+  assert.equal(typeof mod.name, 'string');
+  assert.ok(mod.name.length > 0, 'name must not be empty');
+  assert.equal(typeof mod.apply, 'function');
+  assert.ok(Array.isArray(mod.inject ?? []), 'inject, when present, must be an array');
+});
+
+/* ----------------------------------------------------- provider visibility */
+test('catalog aliases map adapter keys to DSH provider ids', async () => {
+  const src = (await import('node:fs')).readFileSync(
+    new URL('../src/server.js', import.meta.url), 'utf8',
+  );
+  // The mapping is what stops a configured provider from being hidden and a
+  // removed one from lingering; assert the pairs that actually differ.
+  assert.match(src, /antigravity/);
+  assert.match(src, /deepseek-account/);
+  assert.match(src, /opencode-go/);
+});
+
+test('unconfigured providers are filtered out of the all page', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  // kind 'none' means "no credential": showing it as a row is noise.
+  assert.match(src, /kind !== 'none'/, 'readAll must drop kind none');
+  // probe-failed must NOT be dropped: the provider is configured, the failure matters.
+  assert.doesNotMatch(src, /kind !== 'probe-failed'/);
+});

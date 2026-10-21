@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@local/quota-pill',
+  id: '@hystudio/dsh-quota-pill',
   factory(require) {
     const React = require('react');
     const ReactDOM = require('react-dom');
@@ -1365,10 +1365,10 @@ window.__ModuleLoader__.load({
       inject: ['slots'],
       apply(ctx) {
         ctx.inject(['slots', 'modelDirectories'], (scope) => {
-          const styleId = '@local/quota-pill/order';
+          const styleId = '@hystudio/dsh-quota-pill/order';
           if (!document.querySelector(`style[data-plugin-css="${styleId}"]`)) {
             const tag = document.createElement('style');
-            tag.dataset.plugin = '@local/quota-pill';
+            tag.dataset.plugin = '@hystudio/dsh-quota-pill';
             tag.dataset.pluginCss = styleId;
             // Context meter is the last sibling; push the quota ring immediately after it.
             tag.textContent = [
