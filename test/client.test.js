@@ -46,6 +46,7 @@ function loadClient() {
     'providerFor', 'providerName', 'providerEntries', 'quotaBody', 'canRenderBody',
     'describeQuota', 'pctIsInformative', 'tweenEase', 'fmtCompact', 'fmtAmount',
     'providersFromAll', 'ALL_PROVIDERS', 'WindowRow', 'paygBody', 'money',
+    'computePanelPlacement',
   ];
   const factory = new Function(
     'React', 'document', 'navigator', 'h', 'performance',
@@ -253,4 +254,55 @@ test('money() never invents a currency symbol it was not given', () => {
 test('money() picks shorter precision for large amounts', () => {
   // 1234.56 as CNY should not be 6 significant chars longer than needed
   assert.ok(A.money(1234.56, 'CNY').length <= 8);
+});
+
+/* ------------------------------------------------------- panel placement */
+const GAP = 8, EDGE = 12, MAXW = 340;
+const place = (anchor, vw, vh, ph = 300) =>
+  A.computePanelPlacement(anchor, { width: vw, height: vh }, ph, GAP, EDGE, MAXW);
+
+test('a wide window keeps the panel aligned with the trigger', () => {
+  const p = place({ left: 600, top: 800, bottom: 830 }, 1200, 900);
+  assert.equal(p.left, 600);
+  assert.equal(p.width, MAXW);
+});
+
+test('a narrow window shrinks the panel instead of clipping it', () => {
+  // 320px viewport cannot hold a 340px panel; without clamping the right side is cut off.
+  const p = place({ left: 100, top: 800, bottom: 830 }, 320, 900);
+  assert.ok(p.left >= EDGE, 'left must respect the edge margin');
+  assert.ok(p.left + p.width <= 320 - EDGE + 0.5, 'must not exceed the viewport');
+});
+
+test('a trigger near the right edge pulls the panel back in', () => {
+  const p = place({ left: 840, top: 800, bottom: 830 }, 860, 900);
+  assert.ok(p.left + p.width <= 860, 'panel must fit inside the viewport');
+  assert.ok(p.left < 840, 'panel shifts left rather than overflowing');
+});
+
+test('the panel never leaves the viewport at any width', () => {
+  for (const vw of [240, 320, 400, 600, 900, 1400]) {
+    for (const left of [0, 50, 200, vw - 60, vw - 10]) {
+      const p = place({ left, top: 800, bottom: 830 }, vw, 900);
+      assert.ok(p.left >= 0, `left<0 at vw=${vw} left=${left}`);
+      assert.ok(p.left + p.width <= vw, `overflow at vw=${vw} left=${left}`);
+    }
+  }
+});
+
+test('the panel flips below when there is no room above', () => {
+  // Trigger near the top: opening upward would put the panel off-screen.
+  const p = place({ left: 100, top: 20, bottom: 50 }, 1200, 900);
+  assert.equal(p.placement, 'down');
+});
+
+test('the panel opens upward from a bottom toolbar', () => {
+  const p = place({ left: 100, top: 800, bottom: 830 }, 1200, 900);
+  assert.equal(p.placement, 'up');
+});
+
+test('both directions cap height so the panel scrolls instead of overflowing', () => {
+  const tall = place({ left: 100, top: 400, bottom: 430 }, 900, 900, 800);
+  assert.ok(tall.maxHeight <= 900, 'maxHeight must fit the viewport');
+  assert.equal(tall.overflowY, 'auto', 'content must scroll, not spill');
 });

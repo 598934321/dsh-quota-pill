@@ -595,6 +595,50 @@ window.__ModuleLoader__.load({
       const panelRef = React.useRef(null);
       const prevRunning = React.useRef(running);
 
+      // 面板位置：固定在视口内，而不是跟着触发器「贴」到哪算哪。
+      //
+      // 旧写法直接取触发器的 left，面板 340px 宽，窄窗口时右边就被切掉了；
+      // bottom 固定向上展开，窗口矮时上面同样被切。这里改成：
+      //   · 水平：优先对齐触发器左边，再夹到视口内
+      //   · 垂直：上方放得下就向上，放不下就翻到触发器下面
+      //   · 两侧都塞不满时给 maxHeight，让面板自己滚动而不是溢出
+      const [panelStyle, setPanelStyle] = React.useState(null);
+      const GAP = 8;      // 与触发器的间距
+      const EDGE = 12;    // 距视口边缘的最小留白
+      const PANEL_MAX_W = 340;
+
+      /** 把面板夹进视口：水平贴触发器左边但不出界，垂直放不下就翻到下方。 */
+      const placePanel = React.useCallback(() => {
+        const el = anchorRef.current;
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        setPanelStyle(computePanelPlacement(
+          { left: r.left, top: r.top, bottom: r.bottom },
+          {
+            width: window.innerWidth || document.documentElement.clientWidth,
+            height: window.innerHeight || document.documentElement.clientHeight,
+          },
+          panelRef.current ? panelRef.current.offsetHeight : 0,
+          GAP, EDGE, PANEL_MAX_W,
+        ));
+      }, []);
+
+      React.useEffect(() => {
+        if (!open) { setPanelStyle(null); return undefined; }
+        placePanel();
+        // 挂载后量到真实高度再算一次，翻转判定才准
+        const raf = requestAnimationFrame(placePanel);
+        const onViewportChange = () => placePanel();
+        window.addEventListener('resize', onViewportChange);
+        // capture: 工具条自身可能滚动，滚动会改变触发器的位置
+        window.addEventListener('scroll', onViewportChange, true);
+        return () => {
+          cancelAnimationFrame(raf);
+          window.removeEventListener('resize', onViewportChange);
+          window.removeEventListener('scroll', onViewportChange, true);
+        };
+      }, [open, placePanel]);
+
       // 面板页签：默认「当前」（本会话在用的 provider），可切到「全部」。
       const [tab, setTab] = React.useState('current');
       // 切换动画从哪一侧滑入：'right' = 新内容自右来（往前进），'left' = 自左来。
@@ -926,11 +970,10 @@ window.__ModuleLoader__.load({
             role: 'dialog',
             'aria-label': 'quota',
             className: 'quota-pill-panel',
-            style: {
-              position: 'fixed',
-              left: (anchorRef.current ? anchorRef.current.getBoundingClientRect().left : 0),
-              bottom: (anchorRef.current ? window.innerHeight - anchorRef.current.getBoundingClientRect().top + 8 : 0),
-            },
+            style: panelStyle
+              ? { position: 'fixed', ...panelStyle }
+              // 第一帧还没算好位置：先藏着，否则会先画在错误的地方再跳一下
+              : { position: 'fixed', left: 0, top: 0, visibility: 'hidden' },
           },
             h('div', {
               className: 'quota-pill-tabs',
@@ -1174,6 +1217,36 @@ window.__ModuleLoader__.load({
       if (typeof credits.remain !== 'number') return true;
       // 剩余 == 上限 ⇒ 比例恒 100%，没有信息量
       return Math.abs(credits.total - credits.remain) > 1e-9 || Math.abs(pct - 100) > 0.01;
+    }
+
+    /**
+     * 计算面板该放在哪，纯函数（不碰 DOM，便于测试）。
+     *
+     * 面板固定在视口里，不跟着触发器「贴」到哪算哪：
+     *   · 水平：优先对齐触发器左边，再夹进视口，宁可左移也不切边
+     *   · 垂直：上方放得下就向上展开，放不下就翻到触发器下方
+     *   · 都不够高时返回 maxHeight，让面板内部滚动，绝不溢出视口
+     *
+     * @param anchor  触发器的 getBoundingClientRect 形状 {left, top, bottom}
+     * @param viewport {width, height}
+     * @param panelHeight 面板实测高度，0 表示还没量到
+     */
+    function computePanelPlacement(anchor, viewport, panelHeight, gap, edge, maxWidth) {
+      const vw = viewport.width;
+      const vh = viewport.height;
+      const width = Math.min(maxWidth, vw - edge * 2);
+      const left = Math.max(edge, Math.min(anchor.left, vw - width - edge));
+
+      const spaceAbove = anchor.top - gap - edge;
+      const spaceBelow = vh - anchor.bottom - gap - edge;
+      const up = panelHeight === 0
+        ? spaceAbove >= spaceBelow
+        : (spaceAbove >= panelHeight || spaceAbove >= spaceBelow);
+
+      const base = { left, width, overflowY: 'auto' };
+      return up
+        ? { ...base, bottom: Math.max(edge, vh - anchor.top + gap), maxHeight: Math.max(140, spaceAbove), placement: 'up' }
+        : { ...base, top: Math.max(edge, anchor.bottom + gap), maxHeight: Math.max(140, spaceBelow), placement: 'down' };
     }
 
     function WindowRow(props) {
