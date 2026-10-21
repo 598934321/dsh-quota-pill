@@ -30,8 +30,10 @@ The three API-key providers need nothing but the key. The three OAuth providers
 need CLIProxyAPI installed and logged in, because that is what holds the tokens;
 this plugin only reads them and never runs an OAuth flow itself.
 
-Every provider is optional. Unconfigured ones say exactly what is missing instead
-of showing a fake zero.
+Every provider is optional, and **only the ones you actually have are listed**:
+the pill reads DSH's `session/modelCatalog` to learn which providers the app can
+route to, so removing a provider from DSH removes it from the pill too. A provider
+that is present but has no credential is skipped rather than shown as an empty row.
 
 ## Install
 
