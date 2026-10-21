@@ -306,3 +306,37 @@ test('both directions cap height so the panel scrolls instead of overflowing', (
   assert.ok(tall.maxHeight <= 900, 'maxHeight must fit the viewport');
   assert.equal(tall.overflowY, 'auto', 'content must scroll, not spill');
 });
+
+/* ------------------------------------------- prepaid balance + bonus rows */
+test('the all page lists balance and bonus as separate rows', () => {
+  const rows = A.providerEntries(DEEPSEEK_FIXTURE, 'zh');
+  const keys = rows.map((r) => r.key);
+  assert.ok(keys.includes('balance'), 'balance row missing');
+  assert.ok(keys.includes('bonus'), 'bonus row missing');
+});
+
+test('a prepaid row renders as currency, not a compact count', () => {
+  // fmtCompact would print "97" and the unit "CNY"; money() prints the symbol.
+  const row = A.WindowRow({
+    label: 'balance', pct: null, reset: '',
+    credits: { remain: 97.05, unit: 'CNY' }, lang: 'zh', money: true,
+  });
+  const all = texts(row).join(' ');
+  assert.match(all, /\u00a597\.05/);
+  assert.ok(!all.includes('CNY'), 'currency code must not leak beside the symbol');
+});
+
+test('no bonus means no bonus row', () => {
+  const noBonus = { ...DEEPSEEK_FIXTURE, bonus: null };
+  const keys = A.providerEntries(noBonus, 'zh').map((r) => r.key);
+  assert.ok(keys.includes('balance'));
+  assert.ok(!keys.includes('bonus'));
+});
+
+test('the current page shows the same balance and bonus', () => {
+  const t = A.paygBody(DEEPSEEK_FIXTURE, 'zh').kids
+    .flatMap((k) => texts(k));
+  const joined = t.join(' ');
+  assert.match(joined, /\u00a597\.05/);
+  assert.match(joined, /\u00a516\.58/);
+});

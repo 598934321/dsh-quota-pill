@@ -513,6 +513,30 @@ window.__ModuleLoader__.load({
           credits: null,
         }];
       }
+      // Prepaid wallets (official DeepSeek): a balance, plus optional bonus
+      // credit. Both are money, not percentages, so each needs its own row —
+      // collapsing them into one label silently loses the bonus.
+      if (v.kind === 'payg' && v.credits && typeof v.credits.remain === 'number') {
+        const rows = [{
+          key: 'balance',
+          label: pick(lang, 'balanceLeft'),
+          pct: null,
+          reset: '',
+          credits: { remain: v.credits.remain, unit: v.credits.unit },
+          money: true,
+        }];
+        if (v.bonus && typeof v.bonus.amount === 'number') {
+          rows.push({
+            key: 'bonus',
+            label: pick(lang, 'bonusBalance'),
+            pct: null,
+            reset: '',
+            credits: { remain: v.bonus.amount, unit: v.bonus.unit },
+            money: true,
+          });
+        }
+        return rows;
+      }
       if (v.kind !== 'subscription-quota' || v.remainingPct === null || v.remainingPct === undefined) {
         return [{ key: 'kind', label: describeQuota(v, lang).text, pct: null, reset: '', credits: null }];
       }
@@ -1250,7 +1274,7 @@ window.__ModuleLoader__.load({
     }
 
     function WindowRow(props) {
-      const { label, pct, reset, credits, lang, stale } = props;
+      const { label, pct, reset, credits, lang, stale, money: isMoney } = props;
       const isNum = typeof pct === 'number' && Number.isFinite(pct);
       const tweened = useTween(isNum ? pct : null, 450);
       // 首帧 tween 还没拿到起点时 shown 是 null；这时按目标值渲染静态读数，
@@ -1281,7 +1305,7 @@ window.__ModuleLoader__.load({
                     ? `${fmtAmount(credits.remain)} / ${fmtAmount(credits.total)}`
                       + (credits.unit ? ' ' + String(credits.unit) : '')
                     : undefined,
-                }, fmtCompact(credits.remain))
+                }, isMoney ? money(credits.remain, credits.unit) : fmtCompact(credits.remain))
               : isNum
                 ? h('span', {
                     className: 'quota-pill-win-pct',
@@ -1293,7 +1317,7 @@ window.__ModuleLoader__.load({
                     style: { color: remainingColor(shown) },
                   }, typeof shown === 'number' ? `${shown.toFixed(shown < 10 ? 1 : 0)}%` : '')
                 : null,
-            showCredits && unitLabel(credits.unit, lang)
+            showCredits && !isMoney && unitLabel(credits.unit, lang)
               ? h('span', { className: 'quota-pill-win-unit' }, unitLabel(credits.unit, lang))
               : null,
 
@@ -1313,7 +1337,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'quota-pill-group-head' }, name),
         // 组内行 key 带组名，避免不同 provider 的同名窗口（都是 5h/weekly）
         // 被 React 当成同一个组件实例，导致 tween 跨 provider 插值。
-        entries.map((e) => h(WindowRow, { key: `${name}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, credits: e.credits, lang, stale })),
+        entries.map((e) => h(WindowRow, { key: `${name}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, credits: e.credits, lang, stale, money: e.money })),
       );
     }
 
@@ -1388,7 +1412,7 @@ window.__ModuleLoader__.load({
             // key 带 provider：换 provider 时强制重挂载，让 tween 从「空」开始，
             // 而不是把 A 的 5h 平滑滑到 B 的 5h——那是两个不同账户的额度，
             // 中间的数字不代表任何真实状态。
-            entries.map((e) => h(WindowRow, { key: `${providerName}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, credits: e.credits, lang, stale })),
+            entries.map((e) => h(WindowRow, { key: `${providerName}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, credits: e.credits, lang, stale, money: e.money })),
           ),
           h('dl', { className: 'quota-pill-stats' },
             data.account ? statRow(pick(lang, 'account'), String(data.account)) : null,
