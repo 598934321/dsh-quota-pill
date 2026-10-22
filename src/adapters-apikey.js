@@ -11,6 +11,27 @@ import { getJson } from './http.js';
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/**
+ * Normalise a reset timestamp to ISO, or null when there is none.
+ *
+ * Upstreams are inconsistent: some send ISO strings, some epoch milliseconds,
+ * and some use `0` to mean "this window has no reset pending" (Command Code's
+ * five-hour window does exactly that). Treating 0 as a date would render 1970.
+ */
+function isoReset(v) {
+  if (v == null || v === '' || v === 0) return null;
+  if (typeof v === 'string') {
+    // Already ISO-ish: keep as-is so the client formats it consistently.
+    const t = Date.parse(v);
+    return Number.isFinite(t) ? new Date(t).toISOString() : null;
+  }
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // Seconds vs milliseconds: anything below ~year 33658 in ms is really seconds.
+  const ms = n < 1e11 ? n * 1000 : n;
+  return new Date(ms).toISOString();
+}
+
 /** Expand `products` (window → used%) into the `windows` rows the pill renders. */
 function toWindows(products, resetByKey = {}) {
   const out = [];
@@ -217,7 +238,7 @@ export async function commandcode() {
     const pct = round2((Number(used) / Number(cap)) * 100);
     products[label] = pct;
     ratios.push(100 - pct);
-    if (tight === null || pct > tight[1]) tight = [key, pct, w.resetAt];
+    if (tight === null || pct > tight[1]) tight = [key, pct, isoReset(w.resetAt)];
   }
 
   const monthlyLeft = cred.monthlyCredits;
@@ -237,14 +258,21 @@ export async function commandcode() {
 
   // Plan identity (GOAT / Pro / Max) lives on a sibling endpoint; failure there
   // must not lose the quota we already have.
+  // Plan identity and the monthly period live on a sibling endpoint, nested under
+  // `data`. Getting this wrong is silent: the quota still renders, just with a
+  // null plan and a monthly window that cannot show when it renews.
   let plan = null;
+  let monthlyReset = null;
   try {
     const sub = await getJson('https://api.commandcode.ai/alpha/billing/subscriptions', { token });
-    if (sub.ok && sub.data) {
-      plan = sub.data.plan || (sub.data.subscription && sub.data.subscription.plan) || null;
-    }
+    const d = sub.ok && sub.data ? (sub.data.data || {}) : {};
+    plan = d.planId || null;
+    // currentPeriodEnd is the real monthly renewal — better than deriving it
+    // from the weekly window, which was my earlier guess.
+    monthlyReset = d.currentPeriodEnd || null;
   } catch {
     plan = null;
+    monthlyReset = null;
   }
 
   const remaining = round2(Math.min(...ratios));
@@ -261,8 +289,12 @@ export async function commandcode() {
       const r = {};
       for (const [label, key] of [['5h', 'fiveHour'], ['weekly', 'weekly']]) {
         const w = win[key] || {};
-        if (w.resetAt) r[label] = w.resetAt;
+        const iso = isoReset(w.resetAt);
+        if (iso) r[label] = iso;
       }
+      // The monthly ceiling is derived, so its reset must come from the
+      // subscription period; the credits endpoint does not carry one.
+      if (monthlyReset) r.monthly = monthlyReset;
       return r;
     })()),
     raw: { source: 'api.commandcode.ai/alpha/billing/credits', plan },

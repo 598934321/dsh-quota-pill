@@ -340,3 +340,45 @@ test('the current page shows the same balance and bonus', () => {
   assert.match(joined, /\u00a597\.05/);
   assert.match(joined, /\u00a516\.58/);
 });
+
+/* ------------------------------------------------- reset line alignment */
+test('a row without a reset still reserves the line', () => {
+  const withDate = A.WindowRow({ label: 'x', pct: 100, reset: 'in 6d', lang: 'zh' });
+  const without = A.WindowRow({ label: 'x', pct: 100, reset: '', lang: 'zh' });
+  const find = (node, cls) => {
+    if (!node || typeof node !== 'object') return null;
+    if (node.props && node.props.className === cls) return node;
+    for (const k of node.kids || []) {
+      const hit = find(k, cls);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const classesOf = (row) => {
+    const text = find(row, 'quota-pill-win-text');
+    return (text.kids || []).map((k) => k.props && k.props.className);
+  };
+  // Both must expose the same structure, or the numbers stop lining up.
+  assert.deepEqual(classesOf(without), classesOf(withDate));
+});
+
+test('the placeholder reset is hidden, not a fake date', () => {
+  const without = A.WindowRow({ label: 'x', pct: 100, reset: '', lang: 'zh' });
+  // Look only at the reset span: the label and the percentage legitimately
+  // contain digits, so scanning the whole row would always fail.
+  // This file's h() stores props under `props`, not `p`.
+  const find = (node, cls) => {
+    if (!node || typeof node !== 'object') return null;
+    if (node.props && node.props.className === cls) return node;
+    for (const k of node.kids || []) {
+      const hit = find(k, cls);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const resetSpan = find(without, 'quota-pill-win-reset');
+  assert.ok(resetSpan, 'reset span must exist even with no date');
+  const inner = (resetSpan.kids || []).join('');
+  assert.equal(inner.trim(), '', 'placeholder must not carry text');
+  assert.equal(resetSpan.props.style && resetSpan.props.style.visibility, 'hidden');
+});

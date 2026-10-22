@@ -72,6 +72,14 @@ function isoFromEpoch(sec) {
 }
 
 
+/** Same reset for every product row — xAI reports one billing period for all. */
+function fillReset(products, resetAt) {
+  const out = {};
+  if (!resetAt) return out;
+  for (const key of Object.keys(products || {})) out[key] = resetAt;
+  return out;
+}
+
 /**
  * Expand `products` (window → used%) into the `windows` array the client
  * renders. The client shows one row per window with its own reset time, so an
@@ -142,7 +150,10 @@ export async function xai(model) {
       window: period.type || null,
       resetAt: period.end || cfg.billingPeriodEnd || null,
       products,
-      windows: toWindows(products, {}),
+      // Every per-product row shares the account's billing period, so they all
+      // carry the same reset. Leaving it empty made those rows look like they
+      // never expire while the summary right above them showed a date.
+      windows: toWindows(products, fillReset(products, period.end || cfg.billingPeriodEnd)),
       raw: { source: 'billing?format=credits', config: cfg },
     };
   }
@@ -175,7 +186,7 @@ export async function xai(model) {
         window: period.type || null,
         resetAt: period.end || cfg.billingPeriodEnd || null,
         products,
-        windows: toWindows(products, {}),
+        windows: toWindows(products, fillReset(products, period.end || cfg.billingPeriodEnd)),
         detail: {
           tokens: `${rl.remaining_tokens}/${rl.limit_tokens}`,
           requests: `${rl.remaining_requests}/${rl.limit_requests}`,

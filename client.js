@@ -1295,7 +1295,14 @@ window.__ModuleLoader__.load({
         h('div', { className: 'quota-pill-win-main' },
           h('div', { className: 'quota-pill-win-text' },
             h('span', { className: 'quota-pill-win-label', title: label }, label),
-            reset ? h('span', { className: 'quota-pill-win-reset', title: reset }, reset) : null,
+            // Reserve the reset line even when there is nothing to show.
+            // Conditionally omitting it made rows with a reset taller than those
+            // without one, so the column of numbers did not line up.
+            h('span', {
+              className: 'quota-pill-win-reset',
+              title: reset || undefined,
+              style: reset ? undefined : { visibility: 'hidden' },
+            }, reset || '\u00a0'),
           ),
           h('div', { className: 'quota-pill-win-gauge' },
             showCredits
@@ -1528,6 +1535,8 @@ window.__ModuleLoader__.load({
               '.quota-pill-win-unit{flex:none;margin-left:3px;color:var(--dsw-alias-label-tertiary)}',
 
               '.quota-pill-win-ring{flex:none;display:inline-flex}',
+              // 固定行高：没有重置时间的行也要占住这一行，数字才对得齐
+              '.quota-pill-win-reset{min-height:14px}',
               // Sidecar not running: show the fix instead of a bare dash.
               '.quota-pill-offline{display:flex;flex-direction:column;gap:6px;padding:10px 2px}',
               '.quota-pill-offline-title{font-weight:600;color:var(--dsw-alias-label-primary,inherit)}',

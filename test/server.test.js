@@ -252,3 +252,23 @@ test('opendesign window labels come from window length', async () => {
   assert.match(src, /6 \* 3600/);
   assert.match(src, /8 \* 86400/);
 });
+
+/* ---------------------------------------------------- reset normalisation */
+test('epoch milliseconds become ISO, and 0 means "no reset"', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../src/adapters-apikey.js', import.meta.url), 'utf8');
+  // Command Code sends epoch ms for weekly and 0 for "nothing pending" on 5h;
+  // treating 0 as a date would render 1970.
+  assert.match(src, /function isoReset/);
+  assert.match(src, /v === 0/);
+  assert.match(src, /n < 1e11/);
+});
+
+test('the monthly reset comes from the subscription period', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../src/adapters-apikey.js', import.meta.url), 'utf8');
+  // The credits endpoint has no monthly reset; currentPeriodEnd is the real one.
+  assert.match(src, /currentPeriodEnd/);
+  // And the plan is nested under `data`, not at the top level.
+  assert.match(src, /planId/);
+});
