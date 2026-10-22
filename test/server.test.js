@@ -15,7 +15,7 @@ process.env.CLI_PROXY_API_DIR = '/nonexistent-quota-pill-test';
 process.env.DSH_HOME = '/nonexistent-quota-pill-test';
 process.env.QUOTA_PILL_TIMEOUT_MS = '1500';
 
-const { parseCredentialsYaml } = await import('../src/credentials.js');
+const { parseCredentialsYaml, pickFirstRef } = await import('../src/credentials.js');
 
 test('parses plain refs', () => {
   const doc = parseCredentialsYaml('refs:\n  KIMI_CODING_API_KEY: sk-abc\n');
@@ -201,15 +201,57 @@ test('host entry exports name and apply', async () => {
 });
 
 /* ----------------------------------------------------- provider visibility */
-test('catalog aliases map adapter keys to DSH provider ids', async () => {
-  const src = (await import('node:fs')).readFileSync(
-    new URL('../src/server.js', import.meta.url), 'utf8',
+test('every configured real DSH catalog id is visible to its adapter', async () => {
+  const { inCatalog } = await import('../src/providers.js');
+  // The exact ids a real DSH 0.2.1 profile can expose. grok / commandcode-goat
+  // / opendesign-go are the ones the short adapter keys did not cover, so a
+  // configured provider was silently dropped from the All page.
+  const catalog = [
+    'deepseek-account', 'opencode-go', 'commandcode-goat', 'opendesign-go',
+    'codex', 'antigravity', 'grok',
+  ];
+  for (const adapter of ['deepseek', 'opencode', 'commandcode', 'opendesign', 'codex', 'agy', 'xai']) {
+    assert.equal(inCatalog(adapter, catalog), true, `${adapter} must be visible`);
+  }
+  // A provider the catalog does not expose must still be hidden (its adapter
+  // may exist for another profile), and an unknown catalog means "show all".
+  assert.equal(inCatalog('kimi', catalog), false);
+  assert.equal(inCatalog('xai', null), true);
+});
+
+test('model prefixes from DSH map to the right adapter', async () => {
+  const { providerForModel } = await import('../src/providers.js');
+  const cases = [
+    ['opendesign-go/deepseek-v4.1-flash', 'opendesign'],
+    ['commandcode-goat/deepseek/deepseek-v4.1-flash', 'commandcode'],
+    ['deepseek-account/deepseek-chat', 'deepseek'],
+    ['opencode-go/deepseek-v4.1-flash', 'opencode'],
+    ['grok-4.7', 'xai'],
+    ['grok/grok-4.7', 'xai'],
+    ['antigravity/gemini-3.8-flash-high', 'agy'],
+    ['codex/gpt-6.1-sol', 'codex'],
+    ['totally-unknown/model', ''],
+  ];
+  for (const [model, want] of cases) {
+    assert.equal(providerForModel(model), want, `providerForModel(${model})`);
+  }
+});
+
+test('a DSH-named credential ref is accepted when the short one is absent', () => {
+  // The user's DSH config names the ref after apiKeyEnv (GOAT); the plugin's
+  // docs name the short form. Either must be readable, first match wins.
+  const refs = { COMMANDCODE_GOAT_API_KEY: 'sk-goat' };
+  assert.equal(
+    pickFirstRef(refs, ['COMMANDCODE_API_KEY', 'COMMANDCODE_GOAT_API_KEY']),
+    'sk-goat',
   );
-  // The mapping is what stops a configured provider from being hidden and a
-  // removed one from lingering; assert the pairs that actually differ.
-  assert.match(src, /antigravity/);
-  assert.match(src, /deepseek-account/);
-  assert.match(src, /opencode-go/);
+  assert.equal(
+    pickFirstRef({ COMMANDCODE_API_KEY: 'sk-short', COMMANDCODE_GOAT_API_KEY: 'sk-goat' },
+      ['COMMANDCODE_API_KEY', 'COMMANDCODE_GOAT_API_KEY']),
+    'sk-short',
+  );
+  assert.equal(pickFirstRef({ COMMANDCODE_GOAT_API_KEY: '' },
+    ['COMMANDCODE_API_KEY', 'COMMANDCODE_GOAT_API_KEY']), null);
 });
 
 test('unconfigured providers are filtered out of the all page', async () => {

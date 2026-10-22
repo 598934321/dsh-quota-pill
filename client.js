@@ -87,9 +87,17 @@ window.__ModuleLoader__.load({
         return ALL_PROVIDERS.map(([k]) => k).find((k) => m.startsWith(k + '/')) || '';
       }
       if (prefix === 'command-code') return 'commandcode';
+      if (prefix === 'commandcode-goat') return 'commandcode';
       if (prefix === 'opencode-go') return 'opencode';
       if (prefix === 'kimi-coding') return 'kimi';
       if (prefix === 'antigravity') return 'agy';
+      // DSH ids that differ from the adapter keys. Without these the Current
+      // page cannot resolve the session's model even though the All page lists
+      // the provider (a real catalog has deepseek-account / grok /
+      // commandcode-goat / opendesign-go, not the short adapter names).
+      if (prefix === 'deepseek-account') return 'deepseek';
+      if (prefix === 'opendesign-go') return 'opendesign';
+      if (prefix === 'grok') return 'xai';
       if (prefix === 'kimi' || m.startsWith('kimi') || m.startsWith('k3')) return 'kimi';
       if (prefix === 'xai' || m.includes('grok')) return 'xai';
       if (prefix === 'agy' || m.includes('gemini')) return 'agy';
@@ -513,29 +521,28 @@ window.__ModuleLoader__.load({
           credits: null,
         }];
       }
-      // Prepaid wallets (official DeepSeek): a balance, plus optional bonus
-      // credit. Both are money, not percentages, so each needs its own row —
-      // collapsing them into one label silently loses the bonus.
+      // Prepaid wallets (official DeepSeek): the balance is the reading, and
+      // the optional bonus credit is its secondary line. Keeping them as two
+      // window rows inherited the window-row shape — a reserved (empty) reset
+      // line under each amount — which wasted vertical space and made DeepSeek
+      // look unlike every other provider group. One row with a real secondary
+      // line matches the rest of the list.
       if (v.kind === 'payg' && v.credits && typeof v.credits.remain === 'number') {
-        const rows = [{
+        const bonus = (v.bonus && typeof v.bonus.amount === 'number')
+          ? `${pick(lang, 'bonusBalance')} ${money(v.bonus.amount, v.bonus.unit)}`
+          : '';
+        return [{
           key: 'balance',
           label: pick(lang, 'balanceLeft'),
           pct: null,
           reset: '',
+          detail: bonus,
           credits: { remain: v.credits.remain, unit: v.credits.unit },
           money: true,
+          // A wallet with no bonus has no secondary line at all; do not reserve
+          // an empty one just to keep the row as tall as the others.
+          compact: !bonus,
         }];
-        if (v.bonus && typeof v.bonus.amount === 'number') {
-          rows.push({
-            key: 'bonus',
-            label: pick(lang, 'bonusBalance'),
-            pct: null,
-            reset: '',
-            credits: { remain: v.bonus.amount, unit: v.bonus.unit },
-            money: true,
-          });
-        }
-        return rows;
       }
       if (v.kind !== 'subscription-quota' || v.remainingPct === null || v.remainingPct === undefined) {
         return [{ key: 'kind', label: describeQuota(v, lang).text, pct: null, reset: '', credits: null }];
@@ -1274,7 +1281,13 @@ window.__ModuleLoader__.load({
     }
 
     function WindowRow(props) {
-      const { label, pct, reset, credits, lang, stale, money: isMoney } = props;
+      const { label, pct, reset, detail, credits, lang, stale, money: isMoney, compact } = props;
+      // `detail` is a generic secondary line (a payg bonus, an aggregate hint);
+      // `reset` is the window-reset countdown. Rows in a normal group reserve
+      // the line even when empty so their numbers stay aligned inside the group;
+      // a compact row drops it instead of leaving a blank line.
+      const secondary = detail || reset || '';
+      const reserveSecondary = !compact || !!secondary;
       const isNum = typeof pct === 'number' && Number.isFinite(pct);
       const tweened = useTween(isNum ? pct : null, 450);
       // 首帧 tween 还没拿到起点时 shown 是 null；这时按目标值渲染静态读数，
@@ -1295,14 +1308,11 @@ window.__ModuleLoader__.load({
         h('div', { className: 'quota-pill-win-main' },
           h('div', { className: 'quota-pill-win-text' },
             h('span', { className: 'quota-pill-win-label', title: label }, label),
-            // Reserve the reset line even when there is nothing to show.
-            // Conditionally omitting it made rows with a reset taller than those
-            // without one, so the column of numbers did not line up.
-            h('span', {
+            reserveSecondary ? h('span', {
               className: 'quota-pill-win-reset',
-              title: reset || undefined,
-              style: reset ? undefined : { visibility: 'hidden' },
-            }, reset || '\u00a0'),
+              title: secondary || undefined,
+              style: secondary ? undefined : { visibility: 'hidden' },
+            }, secondary || '\u00a0') : null,
           ),
           h('div', { className: 'quota-pill-win-gauge' },
             showCredits
@@ -1344,7 +1354,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'quota-pill-group-head' }, name),
         // 组内行 key 带组名，避免不同 provider 的同名窗口（都是 5h/weekly）
         // 被 React 当成同一个组件实例，导致 tween 跨 provider 插值。
-        entries.map((e) => h(WindowRow, { key: `${name}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, credits: e.credits, lang, stale, money: e.money })),
+        entries.map((e) => h(WindowRow, { key: `${name}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, detail: e.detail, compact: e.compact, credits: e.credits, lang, stale, money: e.money })),
       );
     }
 

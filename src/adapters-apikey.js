@@ -5,7 +5,7 @@
  * ~/.dsh/.credentials.yaml → refs.<NAME>. No OAuth, no external tool: if the
  * key is present the adapter works, and it is the only requirement.
  */
-import { readRef, credentialSource } from './credentials.js';
+import { readRef, readFirstRef, credentialSource } from './credentials.js';
 import { getJson } from './http.js';
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -213,8 +213,13 @@ export async function opencode() {
  * with weekly.cap 6). So the ceiling is inferred rather than hardcoded to 70.
  */
 export async function commandcode() {
-  const token = readRef('COMMANDCODE_API_KEY');
-  if (!token) return notConfigured('commandcode', 'COMMANDCODE_API_KEY');
+  // DSH's own provider config names this ref after its apiKeyEnv
+  // (COMMANDCODE_GOAT_API_KEY); older docs use the short name. Accept both so
+  // a key the user already has is not reported as missing.
+  const token = readFirstRef(['COMMANDCODE_API_KEY', 'COMMANDCODE_GOAT_API_KEY']);
+  if (!token) {
+    return notConfigured('commandcode', 'COMMANDCODE_API_KEY or COMMANDCODE_GOAT_API_KEY');
+  }
 
   const res = await getJson('https://api.commandcode.ai/alpha/billing/credits', {
     token,

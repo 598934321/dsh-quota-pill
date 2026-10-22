@@ -60,7 +60,7 @@ Then, in another shell:
 
 ```bash
 curl -s http://127.0.0.1:8319/health
-# {"ok":true,"port":8319,"providers":["kimi","opencode","commandcode","xai","codex","agy"]}
+# {"ok":true,"port":8319,"providers":["deepseek","kimi","opencode","commandcode","xai","codex","agy","opendesign"]}
 ```
 
 If `CLIProxyAPI: not set up`, the three OAuth providers will report "needs
@@ -86,12 +86,12 @@ Ask before installing a service — that is a persistent change to their machine
 
 Do **not** guess. Ask, in one message, listing the options with what each needs:
 
-> I can read quota for six providers. Which do you have?
+> I can read quota for eight providers. Which do you have?
 >
 > - **DeepSeek** — works already if you are signed in to DeepSeek Platform in DSH
 > - **Kimi Coding** — needs a `KIMI_CODING_API_KEY`
 > - **OpenCode Go** — needs an `OPENCODE_GO_API_KEY`
-> - **Command Code** — needs a `COMMANDCODE_API_KEY`
+> - **Command Code** — needs a `COMMANDCODE_API_KEY` (or `COMMANDCODE_GOAT_API_KEY`, the ref DSH itself uses)
 > - **xAI / Grok**, **Codex / ChatGPT Plus**, **Antigravity** — need CLIProxyAPI installed and logged in
 >
 > Tell me which ones, and paste the key for any of the first three.
@@ -110,7 +110,7 @@ it usually already exists and contains other credentials that must not be lost.
 refs:
   KIMI_CODING_API_KEY: sk-...
   OPENCODE_GO_API_KEY: sk-...
-  COMMANDCODE_API_KEY: sk-...
+  COMMANDCODE_API_KEY: sk-...          # or reuse COMMANDCODE_GOAT_API_KEY
 ```
 
 Rules:
@@ -128,7 +128,7 @@ python3 - <<'PY'
 import yaml, os
 d = yaml.safe_load(open(os.path.expanduser('~/.dsh/.credentials.yaml')))
 refs = d.get('refs') or {}
-for k in ('KIMI_CODING_API_KEY','OPENCODE_GO_API_KEY','COMMANDCODE_API_KEY'):
+for k in ('KIMI_CODING_API_KEY','OPENCODE_GO_API_KEY','COMMANDCODE_API_KEY','COMMANDCODE_GOAT_API_KEY'):
     print(f'{k}: ' + ('present' if refs.get(k) else 'MISSING'))
 PY
 ```

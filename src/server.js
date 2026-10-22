@@ -26,6 +26,7 @@ import { deepseek } from './adapters-deepseek.js';
 import { credentialSource, hasCliProxy, CLI_PROXY_DIR, CREDENTIALS_FILE } from './credentials.js';
 import { catalogProviderIds } from './catalog.js';
 import { opendesign } from './adapters-opendesign.js';
+import { providerForModel, inCatalog } from './providers.js';
 
 const PORT = Number(process.env.QUOTA_PILL_PORT || 8319);
 const HOST = process.env.QUOTA_PILL_HOST || '127.0.0.1';
@@ -47,36 +48,8 @@ const DISPLAY_NAMES = {
   opendesign: 'Open Design',
 };
 
-/** Which DSH model prefixes map to which adapter. */
-const PREFIX_ALIASES = {
-  'kimi-coding': 'kimi',
-  kimi: 'kimi',
-  'opencode-go': 'opencode',
-  opencode: 'opencode',
-  commandcode: 'commandcode',
-  'command-code': 'commandcode',
-  xai: 'xai',
-  codex: 'codex',
-  antigravity: 'agy',
-  agy: 'agy',
-  deepseek: 'deepseek',
-  opendesign: 'opendesign',
-};
-
 /** provider|model → { at, payload }. Keyed by model because readings differ per model. */
 const cache = new Map();
-
-function providerForModel(model) {
-  const m = String(model || '').toLowerCase();
-  const prefix = m.split('/')[0];
-  if (PREFIX_ALIASES[prefix]) return PREFIX_ALIASES[prefix];
-  // Fuzzy fallbacks for models whose prefix is not the provider id.
-  if (m.includes('grok')) return 'xai';
-  if (m.includes('codex') || m.startsWith('gpt-')) return 'codex';
-  if (m.includes('gemini')) return 'agy';
-  if (m.startsWith('k3') || m.startsWith('kimi')) return 'kimi';
-  return '';
-}
 
 async function readOne(provider, model, { fresh = false } = {}) {
   const fn = ADAPTERS[provider];
@@ -106,29 +79,6 @@ async function readOne(provider, model, { fresh = false } = {}) {
 }
 
 /**
- * Which DSH catalog ids count as "this adapter".
- *
- * DSH names providers after the upstream (`antigravity`, `deepseek-account`,
- * `opencode-go`); the adapters use the short keys the pill has always used.
- */
-const CATALOG_ALIASES = {
-  agy: ['antigravity', 'agy'],
-  deepseek: ['deepseek-account', 'deepseek'],
-  opencode: ['opencode-go', 'opencode'],
-  kimi: ['kimi-coding', 'kimi'],
-  xai: ['xai'],
-  codex: ['codex'],
-  commandcode: ['commandcode'],
-  opendesign: ['opendesign'],
-};
-
-function inCatalog(provider, ids) {
-  if (!ids) return true; // catalog unknown: do not hide anything
-  const names = CATALOG_ALIASES[provider] || [provider];
-  return names.some((n) => ids.includes(n));
-}
-
-/**
  * Every provider worth showing: present in DSH's catalog AND actually readable.
  *
  * Two filters, for two different complaints:
@@ -153,13 +103,24 @@ async function readAll({ fresh = false } = {}) {
 }
 
 /** What is configured and what is missing — powers the agent-driven setup. */
+/** Human-readable "what this provider still needs" for /setup and AGENTS.md. */
+function requiresText(src) {
+  if (src.kind === 'cli-proxy') return 'CLIProxyAPI + OAuth login';
+  if (src.kind === 'dsh-account') return 'DSH Platform sign-in (nothing to add)';
+  const refs = (src.refs && src.refs.length) ? src.refs : (src.ref ? [src.ref] : []);
+  if (!refs.length) return 'no credential source';
+  const named = refs.map((r) => `refs.${r}`).join(' or ');
+  const suffix = src.kind === 'session-cookie' ? ' (console session cookie)' : '';
+  return `~/.dsh/.credentials.yaml → ${named}${suffix}`;
+}
+
 function describeSetup() {
   const providers = Object.keys(ADAPTERS).map((p) => {
     const src = credentialSource(p);
     return {
       provider: p,
       name: DISPLAY_NAMES[p] || p,
-      requires: src.kind === 'cli-proxy' ? 'CLIProxyAPI + OAuth login' : `~/.dsh/.credentials.yaml → refs.${src.ref}`,
+      requires: requiresText(src),
       credential: src,
     };
   });

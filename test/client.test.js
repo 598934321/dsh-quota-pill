@@ -85,6 +85,17 @@ function classes(node, acc = []) {
   return acc;
 }
 
+/** First node carrying the given className, or null. */
+function findClass(node, cls) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.props && node.props.className === cls) return node;
+  for (const k of node.kids || []) {
+    const hit = findClass(k, cls);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------- provider map */
 test('providerFor maps the six supported providers', () => {
   const cases = [
@@ -94,6 +105,11 @@ test('providerFor maps the six supported providers', () => {
     ['opencode/x', 'opencode'],
     ['commandcode/x', 'commandcode'],
     ['command-code/x', 'commandcode'],
+    ['commandcode-goat/x', 'commandcode'],
+    ['opendesign-go/deepseek-v4.1-flash', 'opendesign'],
+    ['deepseek-account/deepseek-chat', 'deepseek'],
+    ['grok-4.7', 'xai'],
+    ['grok/grok-4.7', 'xai'],
     ['xai/grok-4', 'xai'],
     ['codex/gpt-6', 'codex'],
     ['antigravity/gemini-3.6', 'agy'],
@@ -308,11 +324,33 @@ test('both directions cap height so the panel scrolls instead of overflowing', (
 });
 
 /* ------------------------------------------- prepaid balance + bonus rows */
-test('the all page lists balance and bonus as separate rows', () => {
+test('the all page shows the balance as one row with the bonus as detail', () => {
   const rows = A.providerEntries(DEEPSEEK_FIXTURE, 'zh');
-  const keys = rows.map((r) => r.key);
-  assert.ok(keys.includes('balance'), 'balance row missing');
-  assert.ok(keys.includes('bonus'), 'bonus row missing');
+  // Two window rows inherited the reserved reset line, leaving a blank line
+  // under each amount: taller than needed and unlike every other provider.
+  assert.equal(rows.length, 1, 'DeepSeek must be one row, not two');
+  assert.equal(rows[0].key, 'balance');
+  assert.match(String(rows[0].detail), /\u00a516\.58/, 'bonus amount missing from detail');
+  assert.equal(rows[0].compact, false, 'a bonus is a real secondary line');
+  const reset = findClass(A.WindowRow({
+    label: rows[0].label, pct: null, reset: '', detail: rows[0].detail,
+    credits: rows[0].credits, money: true, lang: 'zh',
+  }), 'quota-pill-win-reset');
+  assert.ok(reset, 'the bonus must render as the row secondary line');
+  assert.match((reset.kids || []).join(' '), /\u00a516\.58/);
+});
+
+test('a wallet without a bonus omits the empty secondary line', () => {
+  const noBonus = { ...DEEPSEEK_FIXTURE, bonus: null };
+  const rows = A.providerEntries(noBonus, 'zh');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].compact, true);
+  const row = A.WindowRow({
+    label: rows[0].label, pct: null, reset: '', detail: rows[0].detail,
+    compact: rows[0].compact, credits: rows[0].credits, money: true, lang: 'zh',
+  });
+  assert.equal(findClass(row, 'quota-pill-win-reset'), null,
+    'a compact row must not reserve a blank line');
 });
 
 test('a prepaid row renders as currency, not a compact count', () => {

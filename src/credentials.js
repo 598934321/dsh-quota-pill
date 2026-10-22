@@ -82,14 +82,33 @@ function unquote(v) {
   return v;
 }
 
+/** Pick the first present, non-empty ref from an ordered list. */
+export function pickFirstRef(refs, names) {
+  for (const name of names || []) {
+    const v = refs && refs[name];
+    if (typeof v === 'string' && v) return v;
+  }
+  return null;
+}
+
 /** Read one DSH credential ref. Returns null when absent. */
 export function readRef(name) {
+  return readFirstRef([name]);
+}
+
+/**
+ * Read the first of several acceptable credential refs.
+ *
+ * DSH names a provider's key after its configured `apiKeyEnv` (for example
+ * `COMMANDCODE_GOAT_API_KEY`), while older docs and other setups used the
+ * short provider name. Accepting both keeps a key the user already has
+ * visible instead of reporting the provider as unconfigured.
+ */
+export function readFirstRef(names) {
   try {
     const text = fs.readFileSync(CREDENTIALS_FILE, 'utf8');
     const doc = parseCredentialsYaml(text);
-    const refs = doc.refs || {};
-    const v = refs[name];
-    return typeof v === 'string' && v ? v : null;
+    return pickFirstRef(doc.refs || {}, names);
   } catch {
     return null;
   }
@@ -152,14 +171,30 @@ export function hasCliProxy() {
 /** Where a given provider's credentials come from, for the setup docs / AGENTS.md. */
 export function credentialSource(provider) {
   if (provider === 'xai' || provider === 'codex' || provider === 'agy') {
-    return { kind: 'cli-proxy', dir: CLI_PROXY_DIR, ref: null };
+    return { kind: 'cli-proxy', dir: CLI_PROXY_DIR, ref: null, refs: [] };
   }
-  const refByProvider = {
-    kimi: 'KIMI_CODING_API_KEY',
-    commandcode: 'COMMANDCODE_API_KEY',
-    opencode: 'OPENCODE_GO_API_KEY',
+  if (provider === 'deepseek') {
+    // The official account is read through DSH's own Platform sign-in; there is
+    // no credential the user can add to this file.
+    return { kind: 'dsh-account', dir: null, ref: null, refs: [] };
+  }
+  if (provider === 'opendesign') {
+    // The quota console authenticates with a session cookie, not the inference
+    // API key. Same file, different kind of value.
+    return {
+      kind: 'session-cookie',
+      dir: null,
+      ref: 'OPENDESIGN_SESSION_COOKIE',
+      refs: ['OPENDESIGN_SESSION_COOKIE'],
+    };
+  }
+  const refsByProvider = {
+    kimi: ['KIMI_CODING_API_KEY'],
+    commandcode: ['COMMANDCODE_API_KEY', 'COMMANDCODE_GOAT_API_KEY'],
+    opencode: ['OPENCODE_GO_API_KEY'],
   };
-  return { kind: 'api-key', dir: null, ref: refByProvider[provider] || null };
+  const refs = refsByProvider[provider] || [];
+  return { kind: 'api-key', dir: null, ref: refs[0] || null, refs };
 }
 
 /**

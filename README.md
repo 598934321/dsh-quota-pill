@@ -18,7 +18,7 @@ into the live number.
 | **DeepSeek** (official) | the Platform sign-in DSH already holds — nothing to add |
 | **Kimi Coding** | `refs.KIMI_CODING_API_KEY` in `~/.dsh/.credentials.yaml` |
 | **OpenCode Go** | `refs.OPENCODE_GO_API_KEY` |
-| **Command Code** | `refs.COMMANDCODE_API_KEY` |
+| **Command Code** | `refs.COMMANDCODE_API_KEY` or `refs.COMMANDCODE_GOAT_API_KEY` (DSH names it after its `apiKeyEnv`) |
 | **xAI (Grok)** | OAuth token from [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) |
 | **Codex (ChatGPT Plus)** | same — and CLIProxyAPI must be **running** |
 | **Antigravity** | same |
@@ -221,7 +221,7 @@ down to wallet currency and balance. We never handle the Platform token ourselve
 ```bash
 git clone https://github.com/598934321/dsh-quota-pill
 cd dsh-quota-pill
-npm test              # 26 tests, offline
+npm test              # 59 tests, offline
 npm start             # sidecar on :8319
 ```
 
