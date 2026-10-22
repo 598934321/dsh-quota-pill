@@ -22,7 +22,7 @@ into the live number.
 | **xAI (Grok)** | OAuth token from [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) |
 | **Codex (ChatGPT Plus)** | same — and CLIProxyAPI must be **running** |
 | **Antigravity** | same |
-| **Open Design** (optional) | `refs.OPENDESIGN_SESSION_COOKIE` — the cloud console's session cookie |
+| **Open Design** (optional) | `refs.OPENDESIGN_CONTROL_KEY` (`vela_ctrl_…`) + `refs.OPENDESIGN_WORKSPACE_ID`; a console session cookie (`OPENDESIGN_SESSION_COOKIE`) also works as a fallback |
 
 **DeepSeek works with no setup at all** if you are signed in to DeepSeek Platform
 in DSH — that is the official account, and it is the one most users care about.
@@ -193,13 +193,27 @@ would flicker between models you do not even have configured.
 `monthlyCap = weekly.cap × 2`, an identity verified against two different plans
 (31.6 + 38.4 = 70 with `weekly.cap` 35; 0.225 + 9.775 = 10 with `weekly.cap` 6).
 
-**Open Design** keeps its allowance in the cloud console, not in the API key you
-use for inference. The `amr-link.open-design.ai/v1` gateway has no balance
-endpoint at all; the console's own `amr-api` does, and it authenticates with a
-`__Secure-better-auth.session_token` cookie. That cookie is HttpOnly, so grab it
-from devtools → Application → Cookies. The workspace id is discovered
-automatically. The request goes through system curl because Cloudflare rejects
-Node's TLS fingerprint on that host with `error code: 1010`.
+**Open Design** keeps its allowance in the cloud control plane, not in the
+`sk-amr-…` inference key. The preferred credential is a **Control Key**
+(`vela_ctrl_…`), which is accepted by the Bearer-only
+`/billing/preflight` and `/wallet/balance` endpoints alongside
+`x-vela-workspace-id`. Get one with the bundled device sign-in (the same flow
+as the official `vela login`):
+
+```bash
+npx -p @hystudio/dsh-quota-pill dsh-quota-pill-opendesign-login --write
+```
+
+It prints an activation URL, waits for you to approve it in a signed-in browser,
+then writes `OPENDESIGN_CONTROL_KEY` and `OPENDESIGN_WORKSPACE_ID` into
+`~/.dsh/.credentials.yaml`. The workspace id is optional when using a Control
+Key — it is otherwise resolved from `/workspaces/current`.
+
+The older console-session route (`__Secure-better-auth.session_token` cookie,
+browser-session-only `/billing/coding-plan-usage`) is still supported as a
+fallback; that cookie is HttpOnly, so copy it from devtools → Application →
+Cookies. Both routes go through system curl because Cloudflare rejects Node's
+TLS fingerprint on `amr-api` with `error code: 1010`.
 
 **DeepSeek** is a prepaid CNY wallet, so there is no percentage to show — the pill
 shows the balance and, separately, any bonus credit. Two traps worth recording:
@@ -221,7 +235,7 @@ down to wallet currency and balance. We never handle the Platform token ourselve
 ```bash
 git clone https://github.com/598934321/dsh-quota-pill
 cd dsh-quota-pill
-npm test              # 59 tests, offline
+npm test              # 61 tests, offline
 npm start             # sidecar on :8319
 ```
 

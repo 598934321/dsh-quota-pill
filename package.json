@@ -1,6 +1,6 @@
 {
   "name": "@hystudio/dsh-quota-pill",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "private": false,
   "type": "module",
   "description": "Quota pill for DeepSeek Harness: remaining quota for every LLM subscription you have, in one collapsible pill",
@@ -29,7 +29,8 @@
     "./server": "./src/server.js"
   },
   "bin": {
-    "dsh-quota-pill": "bin/quota-pill-server.js"
+    "dsh-quota-pill": "bin/quota-pill-server.js",
+    "dsh-quota-pill-opendesign-login": "bin/opendesign-login.js"
   },
   "files": [
     "index.js",

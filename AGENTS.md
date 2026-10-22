@@ -33,7 +33,7 @@ There are **two credential families**, and this matters for every step:
 | DSH Platform sign-in | `deepseek` | **nothing** — works if they are signed in to DeepSeek Platform in DSH |
 | API key | `kimi`, `opencode`, `commandcode` | a key pasted into `~/.dsh/.credentials.yaml` |
 | OAuth via CLIProxyAPI | `xai`, `codex`, `agy` | **CLIProxyAPI installed and logged in once** |
-| Console session cookie | `opendesign` | the `__Secure-better-auth.session_token` cookie from the Open Design cloud dashboard |
+| Open Design Control Key | `opendesign` | a `vela_ctrl_…` Control Key from the Open Design device sign-in, plus the workspace id (optional); a `__Secure-better-auth.session_token` console cookie is a fallback |
 
 **Check DeepSeek first.** It is the official account and needs no setup beyond a
 DSH Platform sign-in, so it is usually the one the user actually wants. If it
@@ -162,6 +162,22 @@ the OAuth flow itself.
    is read from CLIProxyAPI's management API (`/v0/management/auth-files`), which
    reports the `X-Codex-*` headers CLIProxyAPI observed. Without it running, the
    fallback hits `chatgpt.com`, which blocks non-browser TLS and returns 403.
+
+### Open Design (optional)
+
+Open Design quota uses a **Control Key** (`vela_ctrl_…`), not the `sk-amr-…`
+inference key. Run the bundled device sign-in and approve its URL in the user's
+browser:
+
+```bash
+node bin/opendesign-login.js --write
+```
+
+That writes `OPENDESIGN_CONTROL_KEY` and `OPENDESIGN_WORKSPACE_ID` into
+`~/.dsh/.credentials.yaml`. A console session cookie
+(`OPENDESIGN_SESSION_COOKIE`) is still accepted as a fallback. If the user only
+has an inference key, skip Open Design — an inference key returns 401 on the
+control plane.
 
 ---
 

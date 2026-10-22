@@ -110,6 +110,12 @@ function requiresText(src) {
   const refs = (src.refs && src.refs.length) ? src.refs : (src.ref ? [src.ref] : []);
   if (!refs.length) return 'no credential source';
   const named = refs.map((r) => `refs.${r}`).join(' or ');
+  if (src.kind === 'control-key') {
+    const ws = (src.workspaceRefs || []).map((r) => `refs.${r}`).join(' or ')
+      || 'an explicit workspace ref (optional: resolved from /workspaces/current)';
+    const cookie = src.cookieRef ? ` or console cookie refs.${src.cookieRef}` : '';
+    return `~/.dsh/.credentials.yaml → ${named} + ${ws}${cookie}`;
+  }
   const suffix = src.kind === 'session-cookie' ? ' (console session cookie)' : '';
   return `~/.dsh/.credentials.yaml → ${named}${suffix}`;
 }

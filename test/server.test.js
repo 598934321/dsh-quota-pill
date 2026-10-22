@@ -265,16 +265,18 @@ test('unconfigured providers are filtered out of the all page', async () => {
 
 /* ------------------------------------------------------------- opendesign */
 /**
- * Open Design is opt-in: it reads a console session cookie, not an API key.
- * Without the cookie it must say so by name — an undefined percentage would be
- * indistinguishable from "zero quota left".
+ * Open Design is opt-in: it reads a Control Key (or a console cookie fallback),
+ * not an inference API key. Without either it must say so by name — an
+ * undefined percentage would be indistinguishable from "zero quota left".
  */
-test('opendesign names the cookie it needs', async () => {
+test('opendesign names the credential it needs', async () => {
   const { opendesign } = await import('../src/adapters-opendesign.js');
   const r = await opendesign();
   if (r.kind === 'none') {
+    assert.match(String(r.error), /OPENDESIGN_CONTROL_KEY/);
     assert.match(String(r.error), /OPENDESIGN_SESSION_COOKIE/);
     assert.ok(r.setup, 'must carry setup hints');
+    assert.equal(r.setup.kind, 'control-key');
   }
 });
 
@@ -293,6 +295,42 @@ test('opendesign window labels come from window length', async () => {
   // 18000s = 5h cap, 604800s = weekly. Hardcoded ids would drift.
   assert.match(src, /6 \* 3600/);
   assert.match(src, /8 \* 86400/);
+});
+
+test('the control-plane preflight maps used credits to remaining percent', async () => {
+  const { preflightWindows, shapeReading } = await import('../src/adapters-opendesign.js');
+  // Shape from /billing/preflight: used/limit credits, not remaining.
+  const body = {
+    codingPlan: {
+      eligible: true,
+      tier: 'Go',
+      windows: [
+        { durationSeconds: 18000, usedCredits: 68, limitCredits: 100, resetsAt: '2026-10-23T12:00:00.000Z' },
+        { durationSeconds: 604800, usedCredits: 3, limitCredits: 100, resetsAt: '2026-10-30T00:00:00.000Z' },
+      ],
+    },
+    balanceUsd: 12.5,
+  };
+  const windows = preflightWindows(body);
+  assert.equal(windows.length, 2);
+  const byKey = Object.fromEntries(windows.map((w) => [w.key, w]));
+  assert.equal(byKey['5h'].remainPct, 32);
+  assert.equal(byKey.weekly.remainPct, 97);
+  assert.equal(byKey['5h'].credits.remain, 32);
+
+  const shaped = shapeReading({ windows, balanceUsd: body.balanceUsd, tier: 'Go', source: 'test' });
+  assert.equal(shaped.kind, 'subscription-quota');
+  assert.equal(shaped.remainingPct, 32);
+  assert.equal(shaped.window, '5h');
+  assert.deepEqual(shaped.windows.map((w) => w.key), ['5h', 'weekly']);
+});
+
+test('a control-plane account with only a wallet balance is payg', async () => {
+  const { shapeReading } = await import('../src/adapters-opendesign.js');
+  const r = shapeReading({ windows: [], balanceUsd: 12.5, tier: null, source: 'test' });
+  assert.equal(r.kind, 'payg');
+  assert.equal(r.credits.remain, 12.5);
+  assert.equal(r.credits.unit, 'USD');
 });
 
 /* ---------------------------------------------------- reset normalisation */

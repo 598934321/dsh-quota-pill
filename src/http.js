@@ -67,6 +67,51 @@ export function getJsonViaCurl(url, { token, headers = {}, timeoutMs = DEFAULT_T
   });
 }
 
+/** POST JSON through the system curl (device authorization, control-plane calls). */
+export function postJsonViaCurl(url, body, { token, headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  const args = [
+    '-sS',
+    '--max-time', String(Math.ceil(timeoutMs / 1000)),
+    '-H', 'Accept: application/json',
+    '-H', 'Content-Type: application/json',
+    '-w', '\n%{http_code}',
+  ];
+  if (!proxyUrl()) args.push('--noproxy', '*');
+  if (token) args.push('-H', 'Authorization: Bearer ' + token);
+  if (proxyUrl()) args.push('--proxy', proxyUrl());
+  for (const [k, v] of Object.entries(headers)) {
+    if (v != null && v !== '') args.push('-H', `${k}: ${v}`);
+  }
+  args.push('--data', JSON.stringify(body ?? {}));
+  args.push(url);
+
+  return new Promise((resolve) => {
+    execFile('curl', args, { maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+      if (err && !stdout) {
+        resolve({ ok: false, error: String(err.message || err) });
+        return;
+      }
+      const text = String(stdout || '');
+      const cut = text.lastIndexOf('\n');
+      if (cut < 0) {
+        resolve({ ok: false, error: 'empty response' });
+        return;
+      }
+      const responseBody = text.slice(0, cut);
+      const status = Number(text.slice(cut + 1).trim());
+      if (status < 200 || status >= 300) {
+        resolve({ ok: false, status, error: `http ${status}: ${responseBody.slice(0, 160)}` });
+        return;
+      }
+      try {
+        resolve({ ok: true, status, data: JSON.parse(responseBody) });
+      } catch {
+        resolve({ ok: false, status, error: 'unparsable json: ' + responseBody.slice(0, 120) });
+      }
+    });
+  });
+}
+
 /** GET JSON with fetch. Cheaper; fine for upstreams without TLS fingerprinting. */
 export async function getJson(url, { token, headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const controller = new AbortController();

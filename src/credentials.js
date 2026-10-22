@@ -179,13 +179,16 @@ export function credentialSource(provider) {
     return { kind: 'dsh-account', dir: null, ref: null, refs: [] };
   }
   if (provider === 'opendesign') {
-    // The quota console authenticates with a session cookie, not the inference
-    // API key. Same file, different kind of value.
+    // The quota control plane authenticates with a Control Key (vela_ctrl_…);
+    // a console session cookie is a fallback. The inference sk-amr-… key is a
+    // different credential and cannot read it.
     return {
-      kind: 'session-cookie',
+      kind: 'control-key',
       dir: null,
-      ref: 'OPENDESIGN_SESSION_COOKIE',
-      refs: ['OPENDESIGN_SESSION_COOKIE'],
+      ref: 'OPENDESIGN_CONTROL_KEY',
+      refs: ['OPENDESIGN_CONTROL_KEY', 'VELA_CONTROL_KEY'],
+      workspaceRefs: ['OPENDESIGN_WORKSPACE_ID', 'VELA_WORKSPACE_ID'],
+      cookieRef: 'OPENDESIGN_SESSION_COOKIE',
     };
   }
   const refsByProvider = {
