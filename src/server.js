@@ -24,7 +24,7 @@ import { kimi, opencode, commandcode } from './adapters-apikey.js';
 import { xai, codex, agy } from './adapters-cliproxy.js';
 import { deepseek } from './adapters-deepseek.js';
 import { credentialSource, hasCliProxy, CLI_PROXY_DIR, CREDENTIALS_FILE } from './credentials.js';
-import { catalogProviderIds } from './catalog.js';
+import { catalogProviderIds, forgetCatalog } from './catalog.js';
 import { opendesign } from './adapters-opendesign.js';
 import { providerForModel, inCatalog } from './providers.js';
 
@@ -120,18 +120,22 @@ function requiresText(src) {
   return `~/.dsh/.credentials.yaml → ${named}${suffix}`;
 }
 
-function describeSetup() {
+async function describeSetup() {
+  const catalog = await catalogProviderIds();
   const providers = Object.keys(ADAPTERS).map((p) => {
     const src = credentialSource(p);
     return {
       provider: p,
       name: DISPLAY_NAMES[p] || p,
       requires: requiresText(src),
+      inCatalog: catalog ? inCatalog(p, catalog) : null,
       credential: src,
     };
   });
   return {
     ok: true,
+    catalog,
+    catalogSource: 'DSH session/modelCatalog',
     credentialsFile: CREDENTIALS_FILE,
     cliProxy: { dir: CLI_PROXY_DIR, present: hasCliProxy() },
     providers,
@@ -157,9 +161,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, port: PORT, providers: Object.keys(ADAPTERS) });
     }
     if (url.pathname === '/setup') {
-      return json(res, 200, describeSetup());
+      if (fresh) forgetCatalog();
+      return json(res, 200, await describeSetup());
     }
     if (url.pathname === '/quota/all') {
+      // The catalog is DSH's live provider list. A forced read is how a newly
+      // added provider appears without restarting the sidecar or waiting for
+      // the 120s TTL.
+      if (fresh) forgetCatalog();
       const all = await readAll({ fresh });
       return json(res, 200, all);
     }

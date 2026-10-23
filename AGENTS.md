@@ -9,6 +9,39 @@ the human only for things only they can supply (an API key, an OAuth login).
 
 ---
 
+## Before 1: install the bundle into DSH
+
+This guide assumes the **bundle** is installed and enabled, not just the sidecar.
+For a fresh DSH Desktop:
+
+1. If `dsh` is not on PATH: DSH Desktop → Settings → **Manage dsh Command**.
+2. Install a **pinned** build, never the bare name:
+   - GUI: **Plugins → Install** → `@hystudio/dsh-quota-pill@0.2.10`
+   - CLI: `dsh plugin add @hystudio/dsh-quota-pill@0.2.10 --profile desktop`
+   - Until 0.2.10 is on npm:
+     `github:598934321/dsh-quota-pill#feat/oob-discovery-0.2.10`
+3. Confirm the dependency and the bundle are present:
+
+   ```bash
+   python3 - <<'PY'
+   import json, os
+   p = os.path.expanduser('~/.dsh/profiles/desktop/package.json')
+   d = json.load(open(p))
+   print(d.get('dependencies', {}).get('@hystudio/dsh-quota-pill'))
+   print('enabled:', '@hystudio/dsh-quota-pill' in d.get('dsh', {}).get('profile', {}).get('bundles', []))
+   PY
+   ```
+
+**Why pinned:** pnpm's `minimumReleaseAge` can resolve an unpinned install to the
+broken 0.2.2 (its client half fails to import and the web GUI shows "Failed to
+load plugins"). 0.2.10 is the first version with all providers, Open Design
+Control Keys, and sidecar auto-start.
+
+The host half starts the sidecar when nothing is listening on :8319, so a normal
+desktop install does **not** need a separate `npx` or launchd unit.
+
+---
+
 ## 0. What this plugin does
 
 It shows how much quota is **left** for the LLM subscriptions the user has, in a
@@ -44,6 +77,10 @@ DSH account menu, then re-run step 5.
 
 ## 1. Verify the sidecar runs
 
+The 0.2.10 host plugin starts it automatically when :8319 is free. Give DSH a few
+seconds, then check. If the host half could not start it (or you opted out with
+`QUOTA_PILL_NO_AUTOSTART=1`), run it manually:
+
 ```bash
 npx @hystudio/dsh-quota-pill
 ```
@@ -68,35 +105,58 @@ CLIProxyAPI". That is expected on a fresh machine — tell the human that
 `kimi` / `opencode` / `commandcode` work without it, and ask whether they want
 the OAuth three as well.
 
-**Keep it running.** Do not leave it in the foreground of a terminal the human
-will close. Offer a background service (launchd on macOS, systemd on Linux):
+**Auto-start is the default from 0.2.10**; do not add a service unless the human
+asks for one or DSH is headless. If you do add one, set
+`QUOTA_PILL_NO_AUTOSTART=1` so the plugin and the service do not race, and use
+the **absolute** Node path (launchd's PATH does not include nvm/homebrew):
 
 ```bash
 # macOS: ~/Library/LaunchAgents/dev.quota-pill.plist
-#   ProgramArguments: ["/usr/bin/env","node","<abs path>/bin/quota-pill-server.js"]
+#   ProgramArguments: ["/absolute/path/to/node","<abs path>/bin/quota-pill-server.js"]
 #   RunAtLoad: true
 #   KeepAlive: true
+#   EnvironmentVariables: { QUOTA_PILL_NO_AUTOSTART: "1" }
 ```
 
 Ask before installing a service — that is a persistent change to their machine.
 
 ---
 
-## 2. Ask which providers the user actually has
+## 2. Discover what the user actually has
 
-Do **not** guess. Ask, in one message, listing the options with what each needs:
+Do **not** guess, and do not make the human enumerate providers from memory.
+Use the sidecar's discovery data first:
 
-> I can read quota for eight providers. Which do you have?
->
-> - **DeepSeek** — works already if you are signed in to DeepSeek Platform in DSH
-> - **Kimi Coding** — needs a `KIMI_CODING_API_KEY`
-> - **OpenCode Go** — needs an `OPENCODE_GO_API_KEY`
-> - **Command Code** — needs a `COMMANDCODE_API_KEY` (or `COMMANDCODE_GOAT_API_KEY`, the ref DSH itself uses)
-> - **xAI / Grok**, **Codex / ChatGPT Plus**, **Antigravity** — need CLIProxyAPI installed and logged in
->
-> Tell me which ones, and paste the key for any of the first three.
+1. **DSH catalog + supported adapters + required refs:**
 
-If they have none of them: stop and say the plugin has nothing to show yet.
+   ```bash
+   curl -s 'http://127.0.0.1:8319/setup?fresh=1' | python3 -m json.tool
+   ```
+
+   `catalog` is DSH's live `session/modelCatalog` — the providers the app can
+   route to right now. Each entry in `providers` carries `inCatalog`,
+   `requires`, and `credential`. Compare those with `catalog` to know exactly
+   what is present, what is supported, and what each missing one needs.
+
+2. **What is already readable:**
+
+   ```bash
+   curl -s 'http://127.0.0.1:8319/quota/all?fresh=1' | python3 -m json.tool
+   ```
+
+3. **Credential files** (names only; never print values):
+   `~/.dsh/.credentials.yaml` refs, and `~/.cli-proxy-api/*` token files.
+
+Then ask **only** for what cannot be inferred: an API key, an OAuth login, or an
+Open Design browser approval. Suggested one message:
+
+> Your DSH catalog has: <ids>. I can already read <working>. For <missing> I need
+> <one action each>. Which would you like me to set up?
+
+If the catalog has an id that is **not one of the eight adapters**, say plainly
+that the plugin has no adapter for it; do not claim it will appear by itself.
+
+If the user has none of them: stop and say the plugin has nothing to show yet.
 Do not install a fake provider to "make it look working".
 
 ---
@@ -178,6 +238,23 @@ That writes `OPENDESIGN_CONTROL_KEY` and `OPENDESIGN_WORKSPACE_ID` into
 (`OPENDESIGN_SESSION_COOKIE`) is still accepted as a fallback. If the user only
 has an inference key, skip Open Design — an inference key returns 401 on the
 control plane.
+
+---
+
+## 4b. Adding or removing a provider later
+
+No restart/reinstall is needed for supported providers:
+
+| Change | When it appears |
+|---|---|
+| New credential for a supported provider already in the DSH catalog | next `/quota/all` (All refresh); no sidecar restart |
+| New provider group added to DSH's catalog | within the 2-minute catalog TTL, or immediately with `/quota/all?fresh=1` / **Refresh** / reopening All |
+| Provider removed from DSH | same: next refresh removes it |
+| Brand-new provider **type** (not one of the eight adapters) | needs an adapter in this repo; the catalog alone is not enough |
+
+The All page reads fresh on open, on **Refresh**, and when DSH regains focus; it
+is not a background poll. `/setup?fresh=1` is the quickest way for an agent to
+see the current catalog and which supported provider it has no credential for.
 
 ---
 

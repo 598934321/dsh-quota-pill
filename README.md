@@ -36,22 +36,50 @@ the pill reads DSH's `session/modelCatalog` to learn which providers the app can
 route to, so removing a provider from DSH removes it from the pill too. A provider
 that is present but has no credential is skipped rather than shown as an empty row.
 
+### What "auto-detect" means
+
+- **A new key for a supported provider** (e.g. adding `OPENCODE_GO_API_KEY`)
+  appears on the next All refresh — no DSH restart, no sidecar restart.
+- **A provider newly added to DSH's catalog** appears within the 2-minute catalog
+  TTL, or immediately when you press **Refresh** / reopen the All page (a forced
+  read drops the catalog cache). The All page also re-reads when DSH regains focus.
+- **A brand-new provider type** that is not one of the eight adapters needs a new
+  adapter; a catalog entry alone cannot invent its quota API.
+
 ## Install
 
-```bash
-# 1. the DSH plugin
-dsh plugin add @hystudio/dsh-quota-pill
+**DSH Desktop (recommended).** Open **Plugins → Install**, paste a spec, enable
+the bundle. **Pin the version**: an unpinned install can resolve 0.2.2, which
+breaks web boot. 0.2.10 is the first version with every provider, Open Design
+Control Keys, and sidecar auto-start.
 
-# 2. the sidecar (reads credentials, talks to upstream APIs)
-npx @hystudio/dsh-quota-pill
+```text
+@hystudio/dsh-quota-pill@0.2.10
+```
+
+Until 0.2.10 is on npm, install the branch:
+
+```text
+github:598934321/dsh-quota-pill#feat/oob-discovery-0.2.10
+```
+
+**CLI.** If `dsh` is not on PATH, open DSH Desktop → Settings → **Manage dsh
+Command** first. Then:
+
+```bash
+dsh plugin add @hystudio/dsh-quota-pill@0.2.10
 ```
 
 > The npm package is `@hystudio/...` while the repo lives at `598934321/...` —
 > they are the same author under two account names.
 
-The pill shows **"quota service is not running"** with that exact command until
-the sidecar is up. Keep it running in the background — see
+**The sidecar now starts automatically with the plugin** (the host half spawns it
+when nothing is listening on :8319), so there is no second command for a normal
+desktop install. If you prefer to manage it yourself, run
+`npx @hystudio/dsh-quota-pill` or a service unit — see
 [Running it as a service](#running-it-as-a-service).
+The pill says **"quota service is not running"** only if :8319 is still closed a
+few seconds after DSH starts.
 
 Then add whichever keys you have:
 
@@ -77,6 +105,10 @@ Read AGENTS.md in this repo and set up dsh-quota-pill for me.
 ```
 
 ## Running it as a service
+
+The host plugin already starts the sidecar; this section is only for users who
+want it independent of DSH (server, headless, multiple app profiles). Set
+`QUOTA_PILL_NO_AUTOSTART=1` so the plugin does not race the service.
 
 `npx` in a terminal dies with the terminal. Pick one:
 
@@ -235,7 +267,7 @@ down to wallet currency and balance. We never handle the Platform token ourselve
 ```bash
 git clone https://github.com/598934321/dsh-quota-pill
 cd dsh-quota-pill
-npm test              # 61 tests, offline
+npm test              # 65 tests, offline
 npm start             # sidecar on :8319
 ```
 

@@ -741,6 +741,21 @@ window.__ModuleLoader__.load({
         if (!open || tab !== 'all') allRefreshRef.current = null;
       }, [open, tab]);
 
+      // 切回 DSH（或从系统设置回来）时，DSH 里可能刚加/删了 provider；
+      // 「全部」页开着就重读一次，不必让用户先想起点刷新。
+      React.useEffect(() => {
+        if (!open || tab !== 'all') return undefined;
+        const onVisible = () => {
+          if (document.visibilityState === 'visible') loadAll(true);
+        };
+        window.addEventListener('focus', onVisible);
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+          window.removeEventListener('focus', onVisible);
+          document.removeEventListener('visibilitychange', onVisible);
+        };
+      }, [open, tab, loadAll]);
+
       /**
        * 读一次额度。
        * @param mode 'soft'  上下文变化时用——允许 sidecar 的 60s 缓存命中，没发生消耗就不必打上游

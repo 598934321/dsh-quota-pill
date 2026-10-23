@@ -352,3 +352,40 @@ test('the monthly reset comes from the subscription period', async () => {
   // And the plan is nested under `data`, not at the top level.
   assert.match(src, /planId/);
 });
+
+/* ------------------------------------------------ first-run / discovery */
+test('sidecar auto-start can be opted out', async () => {
+  const old = process.env.QUOTA_PILL_NO_AUTOSTART;
+  process.env.QUOTA_PILL_NO_AUTOSTART = '1';
+  try {
+    const { ensureSidecar } = await import('../src/autostart.js');
+    assert.equal(await ensureSidecar(), null);
+  } finally {
+    if (old === undefined) delete process.env.QUOTA_PILL_NO_AUTOSTART;
+    else process.env.QUOTA_PILL_NO_AUTOSTART = old;
+  }
+});
+
+test('the host half starts the sidecar on first launch', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  assert.match(src, /ensureSidecar/);
+  assert.match(src, /return ensureSidecar\(\)\.catch/);
+});
+
+test('setup exposes the live DSH catalog for agent discovery', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  assert.match(src, /catalog,/);
+  assert.match(src, /catalogSource/);
+  assert.match(src, /inCatalog: catalog \? inCatalog/);
+  // A forced all/setup read must also refresh the catalog, not just quota.
+  assert.match(src, /if \(fresh\) forgetCatalog\(\);/);
+});
+
+test('the All page refreshes when DSH regains focus', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8');
+  assert.match(src, /addEventListener\('focus'/);
+  assert.match(src, /addEventListener\('visibilitychange'/);
+});
