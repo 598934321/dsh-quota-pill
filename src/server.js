@@ -19,15 +19,19 @@
  * Every response includes `cached` and `at` so the client can tell a live
  * reading from a cached one.
  */
+import fs from 'node:fs';
 import http from 'node:http';
 import { kimi, opencode, commandcode } from './adapters-apikey.js';
 import { xai, codex, agy } from './adapters-cliproxy.js';
 import { deepseek } from './adapters-deepseek.js';
 import { credentialSource, hasCliProxy, CLI_PROXY_DIR, CREDENTIALS_FILE } from './credentials.js';
+import { loadUserAdapters, adapterContext, userAdaptersInfo } from './user-adapters.js';
 import { catalogProviderIds, forgetCatalog } from './catalog.js';
 import { opendesign } from './adapters-opendesign.js';
 import { providerForModel, inCatalog } from './providers.js';
 
+const PKG = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const VERSION = PKG.version;
 const PORT = Number(process.env.QUOTA_PILL_PORT || 8319);
 const HOST = process.env.QUOTA_PILL_HOST || '127.0.0.1';
 const CACHE_TTL_MS = Number(process.env.QUOTA_PILL_CACHE_TTL || 60) * 1000;
@@ -47,6 +51,30 @@ const DISPLAY_NAMES = {
   agy: 'Antigravity',
   opendesign: 'Open Design',
 };
+
+/** Provider ids contributed by ~/.dsh/quota-pill/adapters (tracked to purge stale ones). */
+let userProviderNames = new Set();
+
+/**
+ * Reload user adapters from disk and sync them into the request-time registry.
+ * Cheap when the directory has not changed; force on ?fresh=1.
+ */
+async function refreshUserAdapters({ force = false } = {}) {
+  const info = await loadUserAdapters({ force });
+  const next = new Set(info.adapters.map((a) => a.provider));
+  for (const provider of userProviderNames) {
+    if (!next.has(provider)) {
+      delete ADAPTERS[provider];
+      delete DISPLAY_NAMES[provider];
+    }
+  }
+  for (const adapter of info.adapters) {
+    ADAPTERS[adapter.provider] = (model) => adapter.read(adapterContext(model));
+    DISPLAY_NAMES[adapter.provider] = adapter.displayName;
+  }
+  userProviderNames = next;
+  return info;
+}
 
 /** provider|model → { at, payload }. Keyed by model because readings differ per model. */
 const cache = new Map();
@@ -91,6 +119,7 @@ async function readOne(provider, model, { fresh = false } = {}) {
  * failure is information the user needs.
  */
 async function readAll({ fresh = false } = {}) {
+  await refreshUserAdapters({ force: fresh });
   const ids = await catalogProviderIds();
   const wanted = Object.keys(ADAPTERS).filter((p) => inCatalog(p, ids));
 
@@ -105,6 +134,7 @@ async function readAll({ fresh = false } = {}) {
 /** What is configured and what is missing — powers the agent-driven setup. */
 /** Human-readable "what this provider still needs" for /setup and AGENTS.md. */
 function requiresText(src) {
+  if (src.requires) return String(src.requires);
   if (src.kind === 'cli-proxy') return 'CLIProxyAPI + OAuth login';
   if (src.kind === 'dsh-account') return 'DSH Platform sign-in (nothing to add)';
   const refs = (src.refs && src.refs.length) ? src.refs : (src.ref ? [src.ref] : []);
@@ -120,7 +150,7 @@ function requiresText(src) {
   return `~/.dsh/.credentials.yaml → ${named}${suffix}`;
 }
 
-async function describeSetup() {
+async function describeSetup(info) {
   const catalog = await catalogProviderIds();
   const providers = Object.keys(ADAPTERS).map((p) => {
     const src = credentialSource(p);
@@ -132,12 +162,18 @@ async function describeSetup() {
       credential: src,
     };
   });
+  const adapted = new Set(
+    catalog ? catalog.filter((id) => Object.keys(ADAPTERS).some((p) => inCatalog(p, [id]))) : [],
+  );
   return {
     ok: true,
+    version: VERSION,
     catalog,
     catalogSource: 'DSH session/modelCatalog',
+    unadaptedCatalog: catalog ? catalog.filter((id) => !adapted.has(id)) : [],
     credentialsFile: CREDENTIALS_FILE,
     cliProxy: { dir: CLI_PROXY_DIR, present: hasCliProxy() },
+    userAdapters: info ? { ...userAdaptersInfo(), errors: info.errors } : userAdaptersInfo(),
     providers,
   };
 }
@@ -158,11 +194,13 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/health') {
-      return json(res, 200, { ok: true, port: PORT, providers: Object.keys(ADAPTERS) });
+      await refreshUserAdapters({ force: fresh });
+      return json(res, 200, { ok: true, port: PORT, version: VERSION, providers: Object.keys(ADAPTERS) });
     }
     if (url.pathname === '/setup') {
+      const userInfo = await refreshUserAdapters({ force: fresh });
       if (fresh) forgetCatalog();
-      return json(res, 200, await describeSetup());
+      return json(res, 200, await describeSetup(userInfo));
     }
     if (url.pathname === '/quota/all') {
       // The catalog is DSH's live provider list. A forced read is how a newly
@@ -174,11 +212,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/quota') {
       const model = url.searchParams.get('model') || '';
+      await refreshUserAdapters({ force: fresh });
       const provider = providerForModel(model);
       if (!provider) {
         return json(res, 200, {
           kind: 'none',
           provider: 'unknown',
+          displayName: 'Unknown provider',
           model,
           error: `no adapter matches model '${model}'`,
         });

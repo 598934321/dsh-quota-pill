@@ -166,6 +166,75 @@ window.__ModuleLoader__.load({
       return hit ? hit[1] : (EXTRA_PROVIDER_NAMES[key] || String(key || ''));
     }
 
+    /**
+     * 当前 provider 未被识别时，给新会话的 agent 的完整适配提示词。
+     * 用户点「复制提示词」后只需在新会话粘贴，不用自己描述上下文。
+     */
+    function adaptationPrompt(model, provider, lang) {
+      const m = String(model || '(unknown)');
+      const p = String(provider && provider !== 'unknown' ? provider : '(unknown)');
+      if (lang === 'zh') {
+        return [
+          '你是 DSH quota-pill 的 provider 适配 agent。当前模型 ' + m + ' 的 provider（' + p + '）未被插件识别，读取不到余额。',
+          '',
+          '请按 AGENTS.md 的 "Adding a new provider" 流程完成完整适配（不要修改 npm 包内文件，用户适配器会随插件更新保留）：',
+          '1. 运行 curl -s "http://127.0.0.1:8319/setup?fresh=1"，读取 catalog、unadaptedCatalog、userAdapters，确认未知的 DSH provider id。',
+          '2. 阅读 https://github.com/598934321/dsh-quota-pill/blob/main/AGENTS.md 和 src/user-adapters.js 的契约。',
+          '3. 找到该 provider 真实的额度 API 和凭据（官方 console/CLI/API；推理 key 不等于额度 key；不要猜数字）。',
+          '4. 在 ~/.dsh/quota-pill/adapters/<id>.mjs 新建用户适配器，导出 provider、catalogIds、displayName、credential、read(ctx)；read 返回 subscription-quota / payg / usage-only / none / probe-failed 标准结构，可复用 ctx.readRef、ctx.readFirstRef、ctx.getJson、ctx.getJsonViaCurl。',
+          '5. 用 curl "http://127.0.0.1:8319/quota?model=' + encodeURIComponent(m) + '&fresh=1" 验证；失败要说明缺什么，绝不伪造读数。',
+          '6. 若需要凭据，只向用户要该 provider 的凭据；完成后运行 /quota/all?fresh=1 与 /setup?fresh=1，报告已适配/未适配的 provider。',
+        ].join('\n');
+      }
+      return [
+        'You are the provider-adaptation agent for DSH quota-pill. The current model ' + m + ' uses a provider (' + p + ') the plugin does not recognize, so no quota can be read.',
+        '',
+        'Follow the "Adding a new provider" flow in AGENTS.md (do not edit files inside the npm package; user adapters survive plugin updates):',
+        '1. Run curl -s "http://127.0.0.1:8319/setup?fresh=1"; inspect catalog, unadaptedCatalog and userAdapters to identify the unknown DSH provider id.',
+        '2. Read https://github.com/598934321/dsh-quota-pill/blob/main/AGENTS.md and the contract in src/user-adapters.js.',
+        '3. Find that provider\'s real quota API and credential (official console/CLI/API; an inference key is not a quota key; never invent numbers).',
+        '4. Create ~/.dsh/quota-pill/adapters/<id>.mjs exporting provider, catalogIds, displayName, credential, read(ctx). read() returns the standard subscription-quota / payg / usage-only / none / probe-failed shape and may use ctx.readRef, ctx.readFirstRef, ctx.getJson, ctx.getJsonViaCurl.',
+        '5. Verify with curl "http://127.0.0.1:8319/quota?model=' + encodeURIComponent(m) + '&fresh=1"; if it fails, say exactly what is missing and do not fake a reading.',
+        '6. If a credential is needed, ask the user only for that provider\'s credential; then run /quota/all?fresh=1 and /setup?fresh=1 and report adapted/unadapted providers.',
+      ].join('\n');
+    }
+
+    function copyToClipboard(text) {
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          return navigator.clipboard.writeText(text);
+        }
+      } catch {}
+      try {
+        const el = document.createElement('textarea');
+        el.value = text;
+        el.setAttribute('readonly', '');
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.select();
+        if (document.execCommand) document.execCommand('copy');
+        document.body.removeChild(el);
+      } catch {}
+      return Promise.resolve();
+    }
+
+    function isUnrecognizedProvider(data) {
+      return !!(data && (data.provider === 'unknown' || /no adapter matches/i.test(String(data.error || ''))));
+    }
+
+    function adaptHintBlock(data, model, lang) {
+      const prompt = adaptationPrompt(model, data && data.provider, lang);
+      return h('div', { className: 'quota-pill-adapt' },
+        h('div', { className: 'quota-pill-adapt-text' }, pick(lang, 'adaptHint')),
+        h('button', {
+          className: 'quota-pill-adapt-copy',
+          type: 'button',
+          onClick: () => copyToClipboard(prompt),
+        }, pick(lang, 'copyPrompt')),
+      );
+    }
+
     // ------------------------------------------------- 语言（跟随 DSH 的语言设置）
     // DSH 的 @deepseek-ai/dsh-client-locale 会把活动语言写到 <html lang>。
     // 读它即可跟随系统设置，并用 MutationObserver 订阅——切语言时无需刷新。
@@ -212,6 +281,8 @@ window.__ModuleLoader__.load({
       resetDayHour: (d, h) => [`${d} 天 ${h} 小时后重置`, `Resets in ${d}d ${h}h`],
       bodyProbeFailed: ['该模型当前不可用（可用性探测失败）。', 'This model is unavailable (availability probe failed).'],
       bodyNoApi: ['该模型暂无可查额度接口。', 'No queryable quota API for this model.'],
+      adaptHint: ['无法识别该 provider 的余额。请复制提示词到新会话，让 agent 完成适配。', 'This provider is not recognized. Copy the prompt into a new session and ask an agent to adapt it.'],
+      copyPrompt: ['复制提示词', 'Copy prompt'],
       querying: ['查询中…', 'Querying…'],
       underThreshold: ['不足 0.1%', '<0.1%'],
       turnsTotal: (n) => [`（${n} 轮合计）`, ` (${n} turns)`],
@@ -593,7 +664,11 @@ window.__ModuleLoader__.load({
       const model = current ? `${current.provider}/${current.model}` : null;
       const provider = providerFor(model);
       // 读数的缓存键按 provider|model——换模型时额度来源确实不同，不能混用。
-      const readKey = provider ? `${provider}|${current ? current.model : ''}` : '';
+      // 未识别的 provider 也要有一个稳定的 key，否则 query() 会直接放弃，
+      // Current 页就永远看不到「无法识别」的提示。
+      const readKey = provider
+        ? `${provider}|${current ? current.model : ''}`
+        : (current ? `unknown|${current.model}` : '');
       const readKeyRef = React.useRef(readKey);
       readKeyRef.current = readKey;
 
@@ -762,8 +837,8 @@ window.__ModuleLoader__.load({
        *             'fresh' 真有活动（任务起止 / 一轮结束）或手动刷新时用——强制读上游
        */
       const query = React.useCallback((tag, mode) => {
-        if (!provider) { setData(null); return; }
         const key = readKeyRef.current;
+        if (!key) { setData(null); return; }
         const fresh = mode === 'fresh';
         fetch(`${SIDECAR}/quota?model=${encodeURIComponent(model)}${fresh ? '&fresh=1' : ''}`)
           .then((r) => r.json())
@@ -1052,7 +1127,19 @@ window.__ModuleLoader__.load({
                 //   ① 有百分比的订阅额度  ② 积分类（pct 为 null，但有 credits）
                 //   ③ 免费池（usage-only，既无百分比也无积分）
                 : canRenderBody(dataPayload)
-                ? quotaBody(dataPayload, lastDelta, lastSpan, avgDelta, remainTasks, rec.turns.length, lang, providerName(provider), stale)
+                ? quotaBody(
+                    dataPayload,
+                    lastDelta,
+                    lastSpan,
+                    avgDelta,
+                    remainTasks,
+                    rec.turns.length,
+                    lang,
+                    dataPayload && dataPayload.displayName
+                      ? String(dataPayload.displayName)
+                      : providerName(provider),
+                    stale,
+                  )
                 : h('div', {
                     className: 'quota-pill-empty',
                     // 这个 provider 从没刷过：显示「—」并让刷新动效说明正在取。
@@ -1062,6 +1149,8 @@ window.__ModuleLoader__.load({
                   },
                     dataPayload && dataPayload.kind === 'probe-failed' ? pick(lang, 'bodyProbeFailed')
                       : dataPayload && dataPayload.kind === 'token-meter' ? pick(lang, 'bodyNoApi')
+                      : isUnrecognizedProvider(dataPayload)
+                        ? adaptHintBlock(dataPayload, model, lang)
                       : dataPayload && dataPayload.error ? String(dataPayload.error)
                         : stale ? '—' : pick(lang, 'querying')),
             ),
@@ -1524,6 +1613,10 @@ window.__ModuleLoader__.load({
               '.quota-pill-row dt{color:var(--dsw-alias-label-secondary)}',
               '.quota-pill-row dd{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary);margin:0}',
               '.quota-pill-empty{color:var(--dsw-alias-label-secondary)}',
+              '.quota-pill-adapt{display:flex;flex-direction:column;gap:8px;padding:4px 0}',
+              '.quota-pill-adapt-text{color:var(--dsw-alias-label-secondary)}',
+              '.quota-pill-adapt-copy{align-self:flex-start;cursor:pointer;border:1px solid var(--dsw-alias-border-l3,rgba(127,127,127,.28));background:transparent;color:var(--dsw-alias-label-primary);font:inherit;padding:4px 8px;border-radius:var(--dsw-radius-sm,6px)}',
+              '.quota-pill-adapt-copy:hover{background:var(--dsw-alias-interactive-bg-hover)}',
               // 页签：当前 / 全部
               '.quota-pill-tabs{display:flex;gap:2px;margin:-4px 0 10px;padding:2px;border-radius:var(--dsw-radius-sm,6px);background:var(--dsw-alias-interactive-bg-hover)}',
               '.quota-pill-tab{flex:1;cursor:pointer;border:0;background:transparent;font:inherit;padding:3px 0;border-radius:var(--dsw-radius-sm,6px);color:var(--dsw-alias-label-secondary)}',

@@ -43,31 +43,53 @@ that is present but has no credential is skipped rather than shown as an empty r
 - **A provider newly added to DSH's catalog** appears within the 2-minute catalog
   TTL, or immediately when you press **Refresh** / reopen the All page (a forced
   read drops the catalog cache). The All page also re-reads when DSH regains focus.
-- **A brand-new provider type** that is not one of the eight adapters needs a new
-  adapter; a catalog entry alone cannot invent its quota API.
+- **A brand-new provider type** that is not one of the eight adapters needs a
+  **user adapter** in `~/.dsh/quota-pill/adapters/` (see below); a catalog entry
+  alone cannot invent its quota API.
+
+### Unknown providers and user adapters
+
+If the Current page cannot read the session's provider, it shows a short hint and
+a **复制提示词 / Copy prompt** button. The copied prompt contains the whole
+adaptation flow; paste it into a new session and an agent can add the provider
+without touching package files.
+
+User adapters live in:
+
+```text
+~/.dsh/quota-pill/adapters/<provider>.mjs
+```
+
+They are outside the npm package, so **updating the plugin never overwrites
+them**. The sidecar discovers a new/changed file on the next Refresh (no restart).
+`/setup?fresh=1` reports `unadaptedCatalog` and `userAdapters`, and after a
+plugin update the same check tells the agent which providers still need an
+adapter. The module contract (exports, `read(ctx)`, standard kinds) is documented
+in [`src/user-adapters.js`](src/user-adapters.js) and in AGENTS.md §2b.
 
 ## Install
 
 **DSH Desktop (recommended).** Open **Plugins → Install**, paste a spec, enable
 the bundle. **Pin the version**: an unpinned install can resolve 0.2.2, which
-breaks web boot. 0.2.10 is the first version with every provider, Open Design
-Control Keys, and sidecar auto-start.
+breaks web boot. 0.2.11 is the first version with every provider, Open Design
+Control Keys, sidecar auto-start, and **user-defined adapters** for providers the
+package does not ship.
 
 ```text
-@hystudio/dsh-quota-pill@0.2.10
+@hystudio/dsh-quota-pill@0.2.11
 ```
 
-Until 0.2.10 is on npm, install the branch:
+Until 0.2.11 is on npm, install the branch:
 
 ```text
-github:598934321/dsh-quota-pill#feat/oob-discovery-0.2.10
+github:598934321/dsh-quota-pill#feat/user-adapters-0.2.11
 ```
 
 **CLI.** If `dsh` is not on PATH, open DSH Desktop → Settings → **Manage dsh
 Command** first. Then:
 
 ```bash
-dsh plugin add @hystudio/dsh-quota-pill@0.2.10
+dsh plugin add @hystudio/dsh-quota-pill@0.2.11
 ```
 
 > The npm package is `@hystudio/...` while the repo lives at `598934321/...` —
@@ -267,7 +289,7 @@ down to wallet currency and balance. We never handle the Platform token ourselve
 ```bash
 git clone https://github.com/598934321/dsh-quota-pill
 cd dsh-quota-pill
-npm test              # 65 tests, offline
+npm test              # 70 tests, offline
 npm start             # sidecar on :8319
 ```
 

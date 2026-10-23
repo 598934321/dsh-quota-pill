@@ -168,8 +168,21 @@ export function hasCliProxy() {
   }
 }
 
+/** Credential sources contributed by user adapters, keyed by provider id. */
+const userCredentialSources = new Map();
+
+export function registerCredentialSource(provider, source) {
+  if (provider && source) userCredentialSources.set(String(provider), source);
+}
+
+export function clearUserCredentialSources() {
+  userCredentialSources.clear();
+}
+
 /** Where a given provider's credentials come from, for the setup docs / AGENTS.md. */
 export function credentialSource(provider) {
+  const fromAdapter = userCredentialSources.get(provider);
+  if (fromAdapter) return fromAdapter;
   if (provider === 'xai' || provider === 'codex' || provider === 'agy') {
     return { kind: 'cli-proxy', dir: CLI_PROXY_DIR, ref: null, refs: [] };
   }

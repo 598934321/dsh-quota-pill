@@ -46,7 +46,7 @@ function loadClient() {
     'providerFor', 'providerName', 'providerEntries', 'quotaBody', 'canRenderBody',
     'describeQuota', 'pctIsInformative', 'tweenEase', 'fmtCompact', 'fmtAmount',
     'providersFromAll', 'ALL_PROVIDERS', 'WindowRow', 'paygBody', 'money',
-    'computePanelPlacement',
+    'computePanelPlacement', 'adaptationPrompt', 'isUnrecognizedProvider', 'adaptHintBlock',
   ];
   const factory = new Function(
     'React', 'document', 'navigator', 'h', 'performance',
@@ -270,6 +270,28 @@ test('money() never invents a currency symbol it was not given', () => {
 test('money() picks shorter precision for large amounts', () => {
   // 1234.56 as CNY should not be 6 significant chars longer than needed
   assert.ok(A.money(1234.56, 'CNY').length <= 8);
+});
+
+/* ------------------------------------------------ unknown provider adaptation */
+test('unknown provider gets a self-contained adaptation prompt', () => {
+  const p = A.adaptationPrompt('newco/model-x', 'newco', 'zh');
+  assert.match(p, /newco\/model-x/, 'must name the current model');
+  assert.ok(p.includes('~/.dsh/quota-pill/adapters'), 'must name the user adapter directory');
+  assert.match(p, /setup\?fresh=1/);
+  assert.match(p, /quota\?model=/);
+  assert.match(p, /不要|绝不伪造|do not fake/i);
+});
+
+test('only unknown/no-adapter responses get the adaptation hint', () => {
+  assert.equal(A.isUnrecognizedProvider({ provider: 'unknown' }), true);
+  assert.equal(A.isUnrecognizedProvider({ provider: 'acme', error: "no adapter matches model 'x'" }), true);
+  assert.equal(A.isUnrecognizedProvider({ provider: 'xai', error: 'http 401' }), false);
+  assert.equal(A.isUnrecognizedProvider(null), false);
+
+  const block = A.adaptHintBlock({ provider: 'unknown' }, 'newco/model-x', 'zh');
+  const all = texts(block).join(' | ');
+  assert.match(all, /无法识别该 provider/);
+  assert.match(all, /复制提示词/);
 });
 
 /* ------------------------------------------------------- panel placement */

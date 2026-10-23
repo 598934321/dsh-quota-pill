@@ -16,10 +16,10 @@ For a fresh DSH Desktop:
 
 1. If `dsh` is not on PATH: DSH Desktop → Settings → **Manage dsh Command**.
 2. Install a **pinned** build, never the bare name:
-   - GUI: **Plugins → Install** → `@hystudio/dsh-quota-pill@0.2.10`
-   - CLI: `dsh plugin add @hystudio/dsh-quota-pill@0.2.10 --profile desktop`
-   - Until 0.2.10 is on npm:
-     `github:598934321/dsh-quota-pill#feat/oob-discovery-0.2.10`
+   - GUI: **Plugins → Install** → `@hystudio/dsh-quota-pill@0.2.11`
+   - CLI: `dsh plugin add @hystudio/dsh-quota-pill@0.2.11 --profile desktop`
+   - Until 0.2.11 is on npm:
+     `github:598934321/dsh-quota-pill#feat/user-adapters-0.2.11`
 3. Confirm the dependency and the bundle are present:
 
    ```bash
@@ -34,8 +34,8 @@ For a fresh DSH Desktop:
 
 **Why pinned:** pnpm's `minimumReleaseAge` can resolve an unpinned install to the
 broken 0.2.2 (its client half fails to import and the web GUI shows "Failed to
-load plugins"). 0.2.10 is the first version with all providers, Open Design
-Control Keys, and sidecar auto-start.
+load plugins"). 0.2.11 is the first version with all providers, Open Design
+Control Keys, sidecar auto-start, and user-defined adapters.
 
 The host half starts the sidecar when nothing is listening on :8319, so a normal
 desktop install does **not** need a separate `npx` or launchd unit.
@@ -77,7 +77,7 @@ DSH account menu, then re-run step 5.
 
 ## 1. Verify the sidecar runs
 
-The 0.2.10 host plugin starts it automatically when :8319 is free. Give DSH a few
+The 0.2.11 host plugin starts it automatically when :8319 is free. Give DSH a few
 seconds, then check. If the host half could not start it (or you opted out with
 `QUOTA_PILL_NO_AUTOSTART=1`), run it manually:
 
@@ -105,7 +105,7 @@ CLIProxyAPI". That is expected on a fresh machine — tell the human that
 `kimi` / `opencode` / `commandcode` work without it, and ask whether they want
 the OAuth three as well.
 
-**Auto-start is the default from 0.2.10**; do not add a service unless the human
+**Auto-start is the default from 0.2.11**; do not add a service unless the human
 asks for one or DSH is headless. If you do add one, set
 `QUOTA_PILL_NO_AUTOSTART=1` so the plugin and the service do not race, and use
 the **absolute** Node path (launchd's PATH does not include nvm/homebrew):
@@ -122,10 +122,11 @@ Ask before installing a service — that is a persistent change to their machine
 
 ---
 
-## 2. Discover what the user actually has
+## 2. Discover and configure automatically
 
-Do **not** guess, and do not make the human enumerate providers from memory.
-Use the sidecar's discovery data first:
+**Do not ask the user which providers they have.** Enumerate DSH's catalog
+yourself, build the worklist, and configure everything that is possible. The only
+things to ask for are secrets/approvals that the agent cannot supply.
 
 1. **DSH catalog + supported adapters + required refs:**
 
@@ -133,10 +134,9 @@ Use the sidecar's discovery data first:
    curl -s 'http://127.0.0.1:8319/setup?fresh=1' | python3 -m json.tool
    ```
 
-   `catalog` is DSH's live `session/modelCatalog` — the providers the app can
-   route to right now. Each entry in `providers` carries `inCatalog`,
-   `requires`, and `credential`. Compare those with `catalog` to know exactly
-   what is present, what is supported, and what each missing one needs.
+   Read catalog (DSH's live session/modelCatalog), unadaptedCatalog,
+   userAdapters, and each entry in providers (inCatalog, requires, credential).
+   This is the authoritative "what can DSH route to" list.
 
 2. **What is already readable:**
 
@@ -145,19 +145,74 @@ Use the sidecar's discovery data first:
    ```
 
 3. **Credential files** (names only; never print values):
-   `~/.dsh/.credentials.yaml` refs, and `~/.cli-proxy-api/*` token files.
+   ~/.dsh/.credentials.yaml refs, and ~/.cli-proxy-api/* token files.
 
-Then ask **only** for what cannot be inferred: an API key, an OAuth login, or an
-Open Design browser approval. Suggested one message:
+Then act on the classification — do not present a menu:
 
-> Your DSH catalog has: <ids>. I can already read <working>. For <missing> I need
-> <one action each>. Which would you like me to set up?
+| Situation | Agent action |
+|---|---|
+| Already readable | verify it, include the number in the report |
+| Supported + in catalog, missing credential | configure it; if a secret is required, ask for that exact ref only |
+| Unadapted catalog id / provider "unknown" | do not fake a reading; follow §2b and add it to the final report |
+| In catalog but not supported and user does not want to adapt | say so; leave it out |
 
-If the catalog has an id that is **not one of the eight adapters**, say plainly
-that the plugin has no adapter for it; do not claim it will appear by itself.
+Only these need the human: paste a missing API key, install/login CLIProxyAPI,
+or approve the Open Design device page. DeepSeek needs nothing. Do not ask
+"which provider would you like me to set up?" — set up every available one.
 
-If the user has none of them: stop and say the plugin has nothing to show yet.
-Do not install a fake provider to "make it look working".
+If the user truly has no providers at all: stop and say the plugin has nothing to
+show yet. Do not install a fake provider to "make it look working".
+
+---
+
+## 2b. Adapting a provider the plugin does not know
+
+When the Current page cannot read a model's provider, it shows a hint and a
+"复制提示词 / Copy prompt" button. That button copies the full instruction below
+into the clipboard; the human can paste it into a new session. As an agent, you
+can also start from this section directly.
+
+The adaptation is a **user adapter**, not a package edit:
+
+- Directory: ~/.dsh/quota-pill/adapters (created by the sidecar)
+- File: <provider>.mjs
+- It is outside the npm package, so **plugin updates never overwrite it**
+- The sidecar discovers it on the next request/Refresh; no restart
+
+Steps:
+
+1. curl /setup?fresh=1; find the unknown id in catalog / unadaptedCatalog, and
+   check existing files in ~/.dsh/quota-pill/adapters (do not overwrite a working
+   adapter for a different provider).
+2. Find the provider's real quota API and credential. An inference key is not a
+   quota key; never infer a number from model prices or a guess.
+3. Write ~/.dsh/quota-pill/adapters/<provider>.mjs:
+
+   ```js
+   export const provider = 'acme';
+   export const catalogIds = ['acme-go'];       // DSH catalog/model ids
+   export const displayName = 'Acme';
+   export const credential = { kind: 'api-key', refs: ['ACME_API_KEY'] };
+   export async function read(ctx) {
+     // ctx.model, ctx.readRef, ctx.readFirstRef, ctx.getJson,
+     // ctx.getJsonViaCurl, ctx.postJsonViaCurl, ctx.env, ctx.dshHome
+     const key = ctx.readFirstRef(['ACME_API_KEY']);
+     if (!key) return { kind: 'none', provider: 'acme', error: 'no ACME_API_KEY' };
+     const r = await ctx.getJson('https://api.acme.example/usage', { token: key });
+     if (!r.ok) return { kind: 'probe-failed', provider: 'acme', error: r.error };
+     return { kind: 'subscription-quota', provider: 'acme', remainingPct: 80, window: '5h' };
+   }
+   ```
+
+   Return the same kinds as built-ins: subscription-quota (with
+   remainingPct/windows), payg (with credits.remain), usage-only, none (missing
+   credential; explain in error) or probe-failed. Never invent a number.
+4. Verify with curl 'http://127.0.0.1:8319/quota?model=<model>&fresh=1'; if it
+   fails, say exactly what is missing.
+5. Run /quota/all?fresh=1 and /setup?fresh=1 and report adapted/unadapted.
+
+The user adapter contract is also documented in src/user-adapters.js; read it
+before writing the file. Do not put user adapters inside the installed package.
 
 ---
 
@@ -250,11 +305,24 @@ No restart/reinstall is needed for supported providers:
 | New credential for a supported provider already in the DSH catalog | next `/quota/all` (All refresh); no sidecar restart |
 | New provider group added to DSH's catalog | within the 2-minute catalog TTL, or immediately with `/quota/all?fresh=1` / **Refresh** / reopening All |
 | Provider removed from DSH | same: next refresh removes it |
-| Brand-new provider **type** (not one of the eight adapters) | needs an adapter in this repo; the catalog alone is not enough |
+| Brand-new provider **type** (not one of the eight adapters) | needs a user adapter in ~/.dsh/quota-pill/adapters (see §2b); the catalog alone is not enough |
 
 The All page reads fresh on open, on **Refresh**, and when DSH regains focus; it
-is not a background poll. `/setup?fresh=1` is the quickest way for an agent to
-see the current catalog and which supported provider it has no credential for.
+is not a background poll. /setup?fresh=1 is the quickest way for an agent to see
+the current catalog, `unadaptedCatalog`, and which supported provider it has no
+credential for.
+
+---
+
+## 4c. After a plugin update
+
+1. **Do not delete** ~/.dsh/quota-pill/adapters; it is outside the package and
+   is the user's adapted providers. An update must never overwrite it.
+2. Restart DSH/sidecar so the new code loads (the host half starts the sidecar).
+3. Run /setup?fresh=1 and compare catalog with the adapted/user providers.
+4. For every id still in unadaptedCatalog, run §2b (add or update the user
+   adapter). Do not remove a working adapter just because the package changed.
+5. Run /quota/all?fresh=1 and report the full provider list again.
 
 ---
 
@@ -288,6 +356,13 @@ plainly:
 
 - which providers are working
 - which are skipped, and the single action that would enable each
+- the DSH catalog and which ids are still in `unadaptedCatalog` (if any)
+
+**Initial-install summary must include the unknown-provider path:** if
+`unadaptedCatalog` is non-empty (or a current model's provider is unknown), tell
+the user: "这些 provider 还没适配；打开（或重开）当前会话的额度面板，Current 页有
+「复制提示词」按钮，复制到新会话让 agent 按 §2b 适配即可。" The button copies the
+full adapter flow, so the user does not need to explain anything.
 
 Do not paste raw JSON. Do not claim a provider works if it returned `none` or
 `probe-failed`.
