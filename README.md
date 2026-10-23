@@ -71,25 +71,26 @@ in [`src/user-adapters.js`](src/user-adapters.js) and in AGENTS.md §2b.
 
 **DSH Desktop (recommended).** Open **Plugins → Install**, paste a spec, enable
 the bundle. **Pin the version**: an unpinned install can resolve 0.2.2, which
-breaks web boot. 0.2.11 is the first version with every provider, Open Design
+breaks web boot. 0.2.12 is the first version with every provider, Open Design
 Control Keys, sidecar auto-start, and **user-defined adapters** for providers the
 package does not ship.
 
 ```text
-@hystudio/dsh-quota-pill@0.2.11
+@hystudio/dsh-quota-pill@0.2.12
 ```
 
-Until 0.2.11 is on npm, install the branch:
+0.2.12 is published on npm. If pnpm's minimumReleaseAge rejects this fresh
+release, install the branch until it ages:
 
 ```text
-github:598934321/dsh-quota-pill#feat/user-adapters-0.2.11
+github:598934321/dsh-quota-pill#master
 ```
 
 **CLI.** If `dsh` is not on PATH, open DSH Desktop → Settings → **Manage dsh
 Command** first. Then:
 
 ```bash
-dsh plugin add @hystudio/dsh-quota-pill@0.2.11
+dsh plugin add @hystudio/dsh-quota-pill@0.2.12
 ```
 
 > The npm package is `@hystudio/...` while the repo lives at `598934321/...` —

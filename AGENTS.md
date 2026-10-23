@@ -16,10 +16,10 @@ For a fresh DSH Desktop:
 
 1. If `dsh` is not on PATH: DSH Desktop → Settings → **Manage dsh Command**.
 2. Install a **pinned** build, never the bare name:
-   - GUI: **Plugins → Install** → `@hystudio/dsh-quota-pill@0.2.11`
-   - CLI: `dsh plugin add @hystudio/dsh-quota-pill@0.2.11 --profile desktop`
-   - Until 0.2.11 is on npm:
-     `github:598934321/dsh-quota-pill#feat/user-adapters-0.2.11`
+   - GUI: **Plugins → Install** → `@hystudio/dsh-quota-pill@0.2.12`
+   - CLI: `dsh plugin add @hystudio/dsh-quota-pill@0.2.12 --profile desktop`
+   - If pnpm's minimumReleaseAge rejects the fresh 0.2.12 release, use the
+     branch until it ages: `github:598934321/dsh-quota-pill#master`
 3. Confirm the dependency and the bundle are present:
 
    ```bash
@@ -34,7 +34,7 @@ For a fresh DSH Desktop:
 
 **Why pinned:** pnpm's `minimumReleaseAge` can resolve an unpinned install to the
 broken 0.2.2 (its client half fails to import and the web GUI shows "Failed to
-load plugins"). 0.2.11 is the first version with all providers, Open Design
+load plugins"). 0.2.12 is the first version with all providers, Open Design
 Control Keys, sidecar auto-start, and user-defined adapters.
 
 The host half starts the sidecar when nothing is listening on :8319, so a normal
@@ -77,7 +77,7 @@ DSH account menu, then re-run step 5.
 
 ## 1. Verify the sidecar runs
 
-The 0.2.11 host plugin starts it automatically when :8319 is free. Give DSH a few
+The 0.2.12 host plugin starts it automatically when :8319 is free. Give DSH a few
 seconds, then check. If the host half could not start it (or you opted out with
 `QUOTA_PILL_NO_AUTOSTART=1`), run it manually:
 
@@ -105,7 +105,7 @@ CLIProxyAPI". That is expected on a fresh machine — tell the human that
 `kimi` / `opencode` / `commandcode` work without it, and ask whether they want
 the OAuth three as well.
 
-**Auto-start is the default from 0.2.11**; do not add a service unless the human
+**Auto-start is the default from 0.2.12**; do not add a service unless the human
 asks for one or DSH is headless. If you do add one, set
 `QUOTA_PILL_NO_AUTOSTART=1` so the plugin and the service do not race, and use
 the **absolute** Node path (launchd's PATH does not include nvm/homebrew):

@@ -172,7 +172,7 @@ window.__ModuleLoader__.load({
      */
     function adaptationPrompt(model, provider, lang) {
       const m = String(model || '(unknown)');
-      const p = String(provider && provider !== 'unknown' ? provider : '(unknown)');
+      const p = String(provider && provider !== 'unknown' ? provider : 'unknown');
       if (lang === 'zh') {
         return [
           '你是 DSH quota-pill 的 provider 适配 agent。当前模型 ' + m + ' 的 provider（' + p + '）未被插件识别，读取不到余额。',
