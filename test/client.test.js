@@ -47,6 +47,7 @@ function loadClient() {
     'describeQuota', 'pctIsInformative', 'tweenEase', 'fmtCompact', 'fmtAmount',
     'providersFromAll', 'ALL_PROVIDERS', 'WindowRow', 'paygBody', 'money',
     'computePanelPlacement', 'adaptationPrompt', 'isUnrecognizedProvider', 'adaptHintBlock',
+    'isPeriodicWindow',
   ];
   const factory = new Function(
     'React', 'document', 'navigator', 'h', 'performance',
@@ -186,6 +187,42 @@ test('a row shows either a percentage or credits, never both', () => {
   const hasPct = cl.some((c) => c.includes('quota-pill-win-pct'));
   const hasCredits = cl.some((c) => c.includes('quota-pill-win-credits'));
   assert.notEqual(hasPct, hasCredits, 'exactly one readout mode must be active');
+});
+
+test('a periodic window keeps its percentage even when it is full', () => {
+  // A 5-hour bucket that just reset is 100% AND has remain == total; the old
+  // rule would render "50k credits" and then switch back to "94%" later.
+  const row = A.WindowRow({
+    label: '5 小时额度剩余',
+    pct: 100,
+    reset: 'in 2h',
+    credits: { remain: 50000, total: 50000, unit: 'credits' },
+    periodic: true,
+    lang: 'zh',
+  });
+  const cl = classes(row);
+  assert.ok(cl.some((c) => c.includes('quota-pill-win-pct')), 'expects a percentage');
+  assert.ok(!cl.some((c) => c.includes('quota-pill-win-credits')), 'must not show credits');
+  assert.deepEqual(texts(row).filter((t) => t.endsWith('%')), ['100%']);
+});
+
+test('a credit pack without a reset period still shows credits', () => {
+  const row = A.WindowRow({
+    label: '全部积分',
+    pct: 100,
+    credits: { remain: 1000, total: 1000, unit: 'credits' },
+    lang: 'zh',
+  });
+  const cl = classes(row);
+  assert.ok(cl.some((c) => c.includes('quota-pill-win-credits')));
+});
+
+test('periodic windows are recognised by their key', () => {
+  assert.equal(A.isPeriodicWindow('5h'), true);
+  assert.equal(A.isPeriodicWindow('weekly'), true);
+  assert.equal(A.isPeriodicWindow('weekly-2'), true);
+  assert.equal(A.isPeriodicWindow('credits-all'), false);
+  assert.equal(A.isPeriodicWindow('agy-opus'), false);
 });
 
 /* ---------------------------------------------------------------- tweening */

@@ -240,9 +240,15 @@ directly, current plans only reveal allowance in `x-ratelimit-*` response header
 of a one-token completion, and unified-billing accounts have no ceiling at all
 (reported as `payg`).
 
-**Antigravity** shares one quota pool across all Gemini models, so it reports a
-single aggregate row — per-model rows would all be the same number and the label
-would flicker between models you do not even have configured.
+**Antigravity** has three independent quota families, and the pill shows one row
+per family: Gemini models (5-hour + weekly), Gemini 4 Argon (its own weekly
+bucket) and Claude / GPT (5-hour + weekly). The backend decides which catalogue
+and which quota groups it reports from the client label in the `User-Agent`: a
+generic UA gets a legacy answer where every Gemini model is a constant 100% and
+`gemini-4-argon-*` does not exist at all. The adapter therefore sends the
+Antigravity CLI's own UA (`antigravity/cli/<version> (aidev_client; …)`), reads
+`retrieveUserQuotaSummary` and falls back to per-model `fetchAvailableModels`.
+Set `QUOTA_PILL_AGY_UA` to override the UA if a future CLI changes it.
 
 **Command Code** does not expose a monthly ceiling. The adapter derives it from
 `monthlyCap = weekly.cap × 2`, an identity verified against two different plans
@@ -263,6 +269,11 @@ It prints an activation URL, waits for you to approve it in a signed-in browser,
 then writes `OPENDESIGN_CONTROL_KEY` and `OPENDESIGN_WORKSPACE_ID` into
 `~/.dsh/.credentials.yaml`. The workspace id is optional when using a Control
 Key — it is otherwise resolved from `/workspaces/current`.
+
+Windows with a real reset period (5-hour / weekly / monthly) always render as a
+percentage — including the 100% seen right after a reset — so a bucket never
+switches units as it is spent. The credit counts stay in the row's tooltip;
+only credit packs without a period render as credits.
 
 The older console-session route (`__Secure-better-auth.session_token` cookie,
 browser-session-only `/billing/coding-plan-usage`) is still supported as a

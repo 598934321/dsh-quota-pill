@@ -422,67 +422,210 @@ export async function codex() {
 
 /* --------------------------------------------------------------------- agy */
 /**
- * Antigravity (Google Cloud Code) — all Gemini models share ONE pool.
+ * Antigravity (Google Cloud Code) reports THREE independent quota families,
+ * each with its own limits:
  *
- * That is why this adapter deliberately reports no per-model rows: all 22
- * remainingFraction values are identical, so picking "the tightest" would just
- * be "first in dict order" and the label would flicker between model names that
- * are not even what the user has configured. The pool total is real, so only
- * the aggregate is reported.
+ *   - Gemini models   - 5-hour + weekly buckets  ("Gemini Models" group)
+ *   - Gemini 4 Argon  - its own weekly bucket    ("Gemini 4 Argon" group)
+ *   - Claude / GPT    - 5-hour + weekly buckets  ("Claude and GPT models")
+ *
+ * The backend decides which catalogue AND which quota groups it reports from
+ * the client label in the User-Agent. With a generic UA ("antigravity/1.0") it
+ * serves a legacy catalogue: no gemini-4-argon-*, and every Gemini model comes
+ * back with remainingFraction 1 and a resetTime that merely tracks "now + 5h"
+ * - a permanent 100% that hides real usage. The Antigravity CLI's own UA
+ * ("antigravity/cli/<version> (aidev_client; ...)") gets the real catalogue and
+ * the real groups. Verified against the CLI's captured traffic on 2026-10-26
+ * (same token: generic UA -> 23 models, no argon, no Gemini group; CLI UA ->
+ * 29 models, argon at ~91%, three groups).
+ *
+ * Preferred source is retrieveUserQuotaSummary: one request, one group per
+ * family, each with its buckets. Per-model fetchAvailableModels stays as a
+ * fallback if that RPC changes shape.
  */
-export async function agy() {
+const AGY_CLI_UA = process.env.QUOTA_PILL_AGY_UA
+  || 'antigravity/cli/1.4.7 (aidev_client; os_type=darwin; arch=arm64; cl=1006008713; auth_method=consumer)';
+const AGY_PROJECT = { project: 'aicode-consumers' };
+
+/**
+ * One entry per quota family the pill shows. The key is the window key the
+ * client renders; keep it stable - the label table and the spend history are
+ * keyed by it.
+ */
+const AGY_FAMILIES = [
+  { key: 'agy-gemini', label: 'Gemini' },
+  { key: 'agy-argon', label: 'Gemini 4' },
+  { key: 'agy-opus', label: 'Claude / Opus' },
+];
+
+/** Family a model id belongs to (decides which number is the headline one). */
+function agyFamilyForModel(model) {
+  // Model ids arrive bare from the all page and as provider/model on /quota.
+  const id = String(model || '').split('/').pop();
+  if (/argon/i.test(id)) return 'agy-argon';
+  if (/^(claude|gpt)/i.test(id)) return 'agy-opus';
+  if (/gemini/i.test(id)) return 'agy-gemini';
+  return null;
+}
+
+/** Family a quota-summary group belongs to. */
+function agyFamilyForGroup(name) {
+  const n = String(name || '');
+  if (/argon/i.test(n)) return 'agy-argon';
+  if (/claude|gpt/i.test(n)) return 'agy-opus';
+  if (/gemini/i.test(n)) return 'agy-gemini';
+  return null;
+}
+
+/**
+ * Collapse quota-summary groups into one reading per family. The tightest
+ * bucket decides the percentage (a 5-hour bucket at 0 blocks even when the
+ * weekly one still has 46%), and that bucket's reset is what the user can act
+ * on.
+ */
+function agyFamiliesFromSummary(data) {
+  const out = new Map();
+  for (const group of (data && data.groups) || []) {
+    const key = agyFamilyForGroup(group && group.displayName);
+    if (!key) continue;
+    const fam = AGY_FAMILIES.find((f) => f.key === key);
+    let frac = null;
+    let resetAt = null;
+    const buckets = [];
+    for (const b of (group && group.buckets) || []) {
+      const v = b && b.remainingFraction;
+      if (typeof v !== 'number') continue;
+      buckets.push({ id: b.bucketId || null, window: b.window || null, frac: v, resetAt: b.resetTime || null });
+      if (frac === null || v < frac) {
+        frac = v;
+        resetAt = b.resetTime || resetAt;
+      }
+    }
+    if (frac === null) continue;
+    out.set(key, { key, label: fam.label, frac, resetAt, buckets });
+  }
+  return out;
+}
+
+/** Fallback: collapse per-model buckets into one reading per family. */
+function agyFamiliesFromModels(models) {
+  const out = new Map();
+  for (const [mid, info] of Object.entries(models || {})) {
+    const key = agyFamilyForModel(mid);
+    if (!key) continue;
+    const q = (info && info.quotaInfo) || {};
+    const frac = q.remainingFraction;
+    if (typeof frac !== 'number') continue;
+    const fam = AGY_FAMILIES.find((f) => f.key === key);
+    const cur = out.get(key) || { key, label: fam.label, frac: 1, resetAt: null, buckets: [] };
+    cur.buckets.push({ id: mid, window: null, frac, resetAt: q.resetTime || null });
+    if (frac < cur.frac) {
+      cur.frac = frac;
+      cur.resetAt = q.resetTime || cur.resetAt;
+    } else if (!cur.resetAt && q.resetTime) {
+      cur.resetAt = q.resetTime;
+    }
+    out.set(key, cur);
+  }
+  return out;
+}
+
+/** Shape one adapter payload from the families that were actually reported. */
+function agyPayload(cred, fams, model, source) {
+  const wanted = agyFamilyForModel(model);
+  // Headline: the family the current model uses. Without a model (the all
+  // page) Gemini leads, which is also the number quota failover tools compare
+  // against - do not change that silently.
+  const primary = (wanted && fams.get(wanted))
+    || fams.get('agy-gemini')
+    || fams.values().next().value;
+  const remaining = round2(primary.frac * 100);
+  const windows = AGY_FAMILIES
+    .filter((f) => fams.has(f.key))
+    .map((f) => {
+      const v = fams.get(f.key);
+      return { key: v.key, remainPct: round2(v.frac * 100), resetAt: v.resetAt || null };
+    });
+  return {
+    kind: 'subscription-quota',
+    provider: 'agy',
+    account: cred.account || cred.name,
+    remainingPct: remaining,
+    usedPct: round2(100 - remaining),
+    window: primary.key,
+    resetAt: primary.resetAt || null,
+    windows,
+    raw: {
+      source,
+      families: Object.fromEntries([...fams].map(([k, v]) => [k, {
+        remainPct: round2(v.frac * 100),
+        resetAt: v.resetAt || null,
+        buckets: v.buckets,
+      }])),
+    },
+  };
+}
+
+/**
+ * Read one Antigravity login. Both endpoints need the CLI User-Agent - see the
+ * comment above: without it the backend answers from a legacy catalogue whose
+ * Gemini quota is a permanent 100%.
+ */
+async function agyReading(cred, model, errors) {
+  const post = (url) => curlJson(url, {
+    method: 'POST',
+    // googleapis is unreachable directly on some networks; CLIProxyAPI users
+    // almost always have a local proxy configured.
+    proxy: process.env.QUOTA_PILL_PROXY || defaultProxy(),
+    token: cred.token,
+    body: AGY_PROJECT,
+    headers: { 'Content-Type': 'application/json', 'User-Agent': AGY_CLI_UA },
+    timeoutMs: 25000,
+  });
+
+  const summary = await post('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary');
+  if (summary && summary.ok) {
+    const fams = agyFamiliesFromSummary(summary.data);
+    if (fams.size) return agyPayload(cred, fams, model, 'v1internal:retrieveUserQuotaSummary');
+    errors.push(cred.name + ': retrieveUserQuotaSummary had no known groups');
+  } else {
+    errors.push(cred.name + ': retrieveUserQuotaSummary ' + ((summary && summary.error) || 'request failed'));
+  }
+
+  const available = await post('https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels');
+  if (!available || !available.ok) {
+    errors.push(cred.name + ': ' + ((available && available.error) || 'request failed'));
+    return null;
+  }
+  const fams = agyFamiliesFromModels((available.data && available.data.models) || {});
+  if (!fams.size) {
+    errors.push(cred.name + ': fetchAvailableModels had no quotaInfo');
+    return null;
+  }
+  return agyPayload(cred, fams, model, 'v1internal:fetchAvailableModels');
+}
+
+export async function agy(model) {
   const usable = usableFiles('antigravity');
   if (!usable.length) return noCredential('agy', 'antigravity');
 
   const errors = [];
   let best = null;
-
   for (const cred of usable) {
-    const res = await curlJson(
-      'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
-      {
-        method: 'POST',
-        // googleapis is unreachable directly on some networks; CLIProxyAPI
-        // users almost always have a local proxy configured.
-        proxy: process.env.QUOTA_PILL_PROXY || defaultProxy(),
-        token: cred.token,
-        body: {},
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'antigravity/1.0' },
-        timeoutMs: 25000,
-      },
-    );
-    if (!res || !res.ok) {
-      errors.push(`${cred.name}: ${(res && res.error) || 'request failed'}`);
-      continue;
-    }
-    const models = (res.data && res.data.models) || {};
-    const fractions = [];
-    for (const [mid, info] of Object.entries(models)) {
-      const q = (info && info.quotaInfo) || {};
-      const frac = q.remainingFraction;
-      if (typeof frac === 'number') fractions.push([mid, frac, q.resetTime]);
-    }
-    if (!fractions.length) {
-      errors.push(cred.name + ': no quotaInfo');
-      continue;
-    }
-    fractions.sort((a, b) => a[1] - b[1]);
-    const [sampleModel, frac, reset] = fractions[0];
-    const remaining = round2(frac * 100);
-    const candidate = {
-      kind: 'subscription-quota',
-      provider: 'agy',
-      account: cred.account || cred.name,
-      remainingPct: remaining,
-      usedPct: round2(100 - remaining),
-      window: 'model-pool',
-      resetAt: reset || null,
-      raw: { accounts: usable.length, poolModels: fractions.length, sampleModel },
-    };
-    if (!best || candidate.remainingPct > best.remainingPct) best = candidate;
+    const reading = await agyReading(cred, model, errors);
+    if (!reading) continue;
+    // Several antigravity logins: report the one with the most headroom in its
+    // tightest family, so a half-spent account cannot mask a full one.
+    const tightest = Math.min(...reading.windows.map((w) => w.remainPct));
+    if (!best || tightest > best.tightest) best = { reading, tightest };
   }
 
-  if (best) return best;
+  if (best) {
+    if (usable.length > 1) {
+      best.reading.raw = { ...best.reading.raw, accounts: usable.length };
+    }
+    return best.reading;
+  }
   return { kind: 'probe-failed', provider: 'agy', error: errors.join('; ') || 'no quota' };
 }
 

@@ -430,6 +430,12 @@ window.__ModuleLoader__.load({
       '7d': ['每周', 'Weekly'],
       monthly: ['每月', 'Monthly'],
       'model-pool': ['模型池', 'Model pool'],
+      // Antigravity 的两个独立额度族（Gemini / Claude·Opus）。必须登记成已知
+      // 窗口：否则 providerEntries 会认为它们不是额度周期，再补一行汇总，
+      // 同一份额度显示两次。
+      'agy-gemini': ['Gemini', 'Gemini'],
+      'agy-argon': ['Gemini 4', 'Gemini 4'],
+      'agy-opus': ['Claude / Opus', 'Claude / Opus'],
       // 积分类的固定三行。放进这里是为了让 isKnownWindow 认得它们——
       // 否则 providerEntries 会再前置一条汇总行，变成四行。
       'credits-all': ['全部积分', 'All credits'],
@@ -533,6 +539,21 @@ window.__ModuleLoader__.load({
     /** 这个键是不是一个真的"额度窗口"，还是 adapter 顺带报的模型/产品名。 */
     function isKnownWindow(key) {
       return !!WINDOW_LABEL[String(key).replace(/^USAGE_PERIOD_TYPE_/i, '').toLowerCase()];
+    }
+
+    /**
+     * 「周期性额度窗口」= 有真实重置周期的桶（5 小时 / 每周 / 每月）。
+     *
+     * 这类窗口的百分比永远有信息量：刚重置就是 100%，用掉就是 94%，两种状态
+     * 都值得看。它们不能走 pctIsInformative 的「满格就显示积分」规则——那条
+     * 规则是为「没有周期的积分包」写的，用在 opendesign 的 5h 桶上会让它在
+     * 刚重置时显示「50k 积分」、用掉之后又变回百分比，同一个窗口两种单位。
+     */
+    const PERIODIC_WINDOWS = new Set(['5h', 'fivehour', 'rolling', 'weekly', '7d', 'monthly']);
+
+    function isPeriodicWindow(key) {
+      const k = String(key || '').replace(/^USAGE_PERIOD_TYPE_/i, '').toLowerCase();
+      return PERIODIC_WINDOWS.has(k) || /^weekly-\d+$/.test(k);
     }
 
     /**
@@ -641,6 +662,8 @@ window.__ModuleLoader__.load({
           pct: Number.isFinite(pct) ? pct : null,
           reset: (w.credits && w.resetAt) ? fmtExpiry(w.resetAt, lang) : fmtResetAt(w.resetAt, lang),
           credits: w.credits || null,
+          // 有重置周期的窗口一律优先显示百分比（见 isPeriodicWindow）。
+          periodic: isPeriodicWindow(w.key),
         });
       }
       // 积分类用的是固定三行，三个键都算「已知窗口」，所以不会再前置汇总行——
@@ -1385,7 +1408,7 @@ window.__ModuleLoader__.load({
     }
 
     function WindowRow(props) {
-      const { label, pct, reset, detail, credits, lang, stale, money: isMoney, compact } = props;
+      const { label, pct, reset, detail, credits, lang, stale, money: isMoney, compact, periodic } = props;
       // `detail` is a generic secondary line (a payg bonus, an aggregate hint);
       // `reset` is the window-reset countdown. Rows in a normal group reserve
       // the line even when empty so their numbers stay aligned inside the group;
@@ -1402,7 +1425,8 @@ window.__ModuleLoader__.load({
       //   · 百分比恒 100%   → 显示积分（这种渠道百分比什么都说明不了）
       // 判据见 pctIsInformative；两种方式都保留，只是不同渠道各取其一。
       const hasCredits = credits && typeof credits.remain === 'number';
-      const showPct = isNum && pctIsInformative(pct, credits);
+      // 周期窗口：百分比永远是主读数；积分只在 tooltip 里作为补充。
+      const showPct = isNum && (periodic || pctIsInformative(pct, credits));
       const showCredits = hasCredits && !showPct;
       // data-stale：这份读数是「该 provider 上次的值」，正在后台刷新。
       // 视觉上降饱和 + 缓慢呼吸，数据到了再撤掉（见 CSS）。
@@ -1458,7 +1482,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'quota-pill-group-head' }, name),
         // 组内行 key 带组名，避免不同 provider 的同名窗口（都是 5h/weekly）
         // 被 React 当成同一个组件实例，导致 tween 跨 provider 插值。
-        entries.map((e) => h(WindowRow, { key: `${name}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, detail: e.detail, compact: e.compact, credits: e.credits, lang, stale, money: e.money })),
+        entries.map((e) => h(WindowRow, { key: `${name}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, detail: e.detail, compact: e.compact, credits: e.credits, periodic: e.periodic, lang, stale, money: e.money })),
       );
     }
 
@@ -1533,7 +1557,7 @@ window.__ModuleLoader__.load({
             // key 带 provider：换 provider 时强制重挂载，让 tween 从「空」开始，
             // 而不是把 A 的 5h 平滑滑到 B 的 5h——那是两个不同账户的额度，
             // 中间的数字不代表任何真实状态。
-            entries.map((e) => h(WindowRow, { key: `${providerName}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, credits: e.credits, lang, stale, money: e.money })),
+            entries.map((e) => h(WindowRow, { key: `${providerName}|${e.key}`, label: e.label, pct: e.pct, reset: e.reset, credits: e.credits, periodic: e.periodic, lang, stale, money: e.money })),
           ),
           h('dl', { className: 'quota-pill-stats' },
             data.account ? statRow(pick(lang, 'account'), String(data.account)) : null,

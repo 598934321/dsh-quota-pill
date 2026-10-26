@@ -1,6 +1,6 @@
 {
   "name": "@hystudio/dsh-quota-pill",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": false,
   "type": "module",
   "description": "Quota pill for DeepSeek Harness: remaining quota for every LLM subscription you have, in one collapsible pill",
